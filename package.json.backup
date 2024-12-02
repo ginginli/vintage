@@ -1,0 +1,14 @@
+{
+  "name": "vintage-stock-analysis",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "node-fetch": "^2.6.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  }
+}
