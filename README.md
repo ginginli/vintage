@@ -1,7 +1,5 @@
 # 股票分析助手
 
-![Sync Status](https://github.com/YOUR_USERNAME/vintage/workflows/Code%20Sync%20Check/badge.svg)
-
 基于《笑傲牛熊》的股票分析工具，帮助投资者进行技术分析和决策。
 
 ## 项目结构
@@ -99,7 +97,7 @@ tock-analyzer/
 
 ## 技术指标说明
 
-### MA20核心指��
+### MA20核心指标
 - 计算方法：MA20 = (C1 + C2 + ... + C20) / 20
 - 位置判断：
   - 站稳：连续3天上站MA20，偏离度≤8%
