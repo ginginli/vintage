@@ -660,7 +660,7 @@
             }
         }
 
-        /* 分析容器样式优化 */
+        /* 分析容器样式��化 */
         .analysis-container {
             max-width: 1200px;
             margin: 0 auto;
@@ -968,9 +968,8 @@
         </div>
         
         <div class="analysis-container">
-            <!-- 市场特征判断标题 -->
-            <h3 class="standalone-title">市场特征判断</h3>
-            
+            <!-- 趋势分析部分 -->
+            <h3 class="standalone-title">趋势分析</h3>
             <div class="analysis-section">
                 <div class="indicators-grid">
                     <div class="analysis-card primary-card">
@@ -979,20 +978,50 @@
                     </div>
                     
                     <div class="analysis-card">
-                        <div class="card-title">量价配合</div>
-                        <textarea id="volumePriceAnalysis" readonly></textarea>
+                        <div class="card-title">趋势转折点分析</div>
+                        <textarea id="trendTurningPoint" readonly></textarea>
                     </div>
 
-                    <div class="analysis-card conclusion-card">
-                        <div class="card-title">市场特征结论</div>
-                        <textarea id="marketCharacter" readonly></textarea>
+                    <div class="analysis-card">
+                        <div class="card-title">趋势级别</div>
+                        <textarea id="trendLevel" readonly></textarea>
                     </div>
                 </div>
             </div>
 
-            <!-- 操作建议标题和容 -->
+            <!-- 量价分析部分 -->
+            <h3 class="standalone-title">量价分析</h3>
+            <div class="analysis-section">
+                <div class="indicators-grid">
+                    <div class="analysis-card">
+                        <div class="card-title">量价配合</div>
+                        <textarea id="volumePriceAnalysis" readonly></textarea>
+                    </div>
+
+                    <div class="analysis-card">
+                        <div class="card-title">市场阶段</div>
+                        <textarea id="marketStage" readonly></textarea>
+                    </div>
+
+                    <div class="analysis-card">
+                        <div class="card-title">主力资金分析</div>
+                        <textarea id="institutionalAnalysis" readonly></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 市场特征判断部分 -->
+            <h3 class="standalone-title">市场特征判断</h3>
+            <div class="analysis-section">
+                <div class="analysis-card conclusion-card">
+                    <div class="card-title">市场特征结论</div>
+                    <textarea id="marketCharacter" readonly></textarea>
+                </div>
+            </div>
+
+            <!-- 操作建议部分 -->
             <h3 class="standalone-title">操作建议</h3>
-            <div class="advice-content">
+            <div class="advice-section">
                 <textarea id="operationAdvice" readonly></textarea>
             </div>
         </div>
@@ -1017,7 +1046,7 @@
                         </ul>
                         <li>价格与MA20关系判断：</li>
                         <ul>
-                            <li>站稳：连续3天上站在MA20上方，且偏离度不超过8%</li>
+                            <li>站稳：连续3天上站在MA20上方，且偏离度��超过8%</li>
                             <li>跌破：连续3天以上位于MA20下方，且偏离度超过3%</li>
                             <li>徘徊：价格在MA20上下3%范围内波动</li>
                         </ul>
@@ -1087,7 +1116,7 @@
                         <li>未持有策略：</li>
                         <ul>
                             <li>多头市场：回调至MA20附近买入，止损位MA20下方3%</li>
-                            <li>空头市场：不买入，等待市场稳</li>
+                            <li>空头市场：不买入，等待市场���</li>
                             <li>盘整市场：观望为主，等待趋势明确</li>
                         </ul>
                         <li>已持有策略：</li>
@@ -1176,5 +1205,18 @@
             showTab('ma20');
         });
     </script>
+
+    
+<div style="display: none;">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2BWZNV1Q0Y"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2BWZNV1Q0Y');
+</script>
+</div>
 </body>
 </html> 
