@@ -1,0 +1,29 @@
+name: Code Sync Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Check files
+      run: |
+        # 检查必要文件是否存在
+        for file in \
+          "public/index.html" \
+          "public/js/vintage.js" \
+          "api/stock.js" \
+          "vercel.json" \
+          "package.json"
+        do
+          if [ ! -f "$file" ]; then
+            echo "Missing file: $file"
+            exit 1
+          fi
+        done 
