@@ -9,23 +9,21 @@ class StockAPI {
     }
 
     getApiBaseUrl() {
-        // 获取当前页面的端口
-        const currentPort = window.location.port;
+        // 获取当前页面的协议和主机名
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        const port = '4001';
         
         // 如果是本地开发环境
-        if (window.location.hostname === 'localhost') {
-            return `http://localhost:${currentPort}/api/stock`;
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return `${protocol}//${hostname}:${port}/api/stock`;
         }
         
-        // 生产环境使用相对路径
+        // 生产环境
         return '/api/stock';
     }
 
     async fetchStockData(symbol) {
-        return await this._fetchStockData(symbol);
-    }
-
-    async _fetchStockData(symbol) {
         try {
             const maxRetries = 3;
             let retryCount = 0;
@@ -56,11 +54,12 @@ class StockAPI {
                     
                     return data.stockData;
                 } catch (error) {
+                    console.error('API 请求错误:', error);
                     retryCount++;
                     if (retryCount === maxRetries) {
                         throw error;
                     }
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, retryCount)));
                 }
             }
         } catch (error) {
@@ -219,12 +218,18 @@ class ChartManager {
 class StockAnalyzer {
     analyze(data) {
         const marketCharacter = this.determineMarketCharacter(data);
+        const trendAnalysis = this.analyzeTrendTurningPoint(data);
+        const stageAnalysis = this.analyzeStageAndVolume(data);
+        const institutionalAnalysis = this.analyzeInstitutionalBehavior(data);
         
         return {
             ma20Analysis: this.analyzeTrend(data, marketCharacter),
             volumePriceAnalysis: this.analyzeVolumePrice(data, marketCharacter),
             marketCharacter: this.explainMarketCharacter(data, marketCharacter),
-            operationAdvice: this.generateOperationAdvice(data, marketCharacter)
+            operationAdvice: this.generateOperationAdvice(data, marketCharacter),
+            trend: trendAnalysis,
+            stage: stageAnalysis,
+            institutional: institutionalAnalysis
         };
     }
 
@@ -293,7 +298,6 @@ class StockAnalyzer {
         
         return analysis;
     }
-
     explainMarketCharacter(data, marketCharacter) {
         const prices = data.map(item => item.close);
         const ma20 = this.calculateMA(20, prices);
@@ -325,7 +329,6 @@ class StockAnalyzer {
         
         return explanation;
     }
-
     generateOperationAdvice(data, marketCharacter) {
         const prices = data.map(item => item.close);
         const ma20 = this.calculateMA(20, prices);
@@ -344,8 +347,8 @@ class StockAnalyzer {
                 advice += `   - 首选：回调至MA20（${ma20.toFixed(2)}）企稳\n`;
                 advice += "     企稳标准：\n";
                 advice += "     1) MA20持续向上倾斜\n";
-                advice += "     2) 股价连续3天站稳MA20上方\n";
-                advice += "     3) 成交量较前期温和放大\n";
+                advice += "     2) 连续3天站稳MA20上方\n";
+                advice += "     3) 成交量较前温和放大\n";
                 advice += "   买入方式：\n";
                 advice += "   - 第一批：确认企稳后买入60%\n";
                 advice += "   - 第二批：突破阶段新高后补仓30%\n";
@@ -363,8 +366,8 @@ class StockAnalyzer {
                 advice += "      - MA20由上升转平\n";
                 advice += "      - 股价连续3天收在MA20下方\n";
                 advice += "   2) 量价背离：\n";
-                advice += "      - 股价创新高但成交量明显萎缩\n";
-                advice += "      - 或出现放量滞涨：\n";
+                advice += "      - 股价创��高但成交量明显萎缩\n";
+                advice += "      - 出现放量滞涨：\n";
                 advice += "        · 成交量较前期放大50%以上\n";
                 advice += "        · 但股价涨幅显著收窄\n";
                 advice += "        · 尤其注意尾盘跳水\n";
@@ -386,8 +389,8 @@ class StockAnalyzer {
                 advice += `   - 止损位：MA20（${ma20.toFixed(2)}）下方\n\n`;
                 
                 advice += "2. 持有策略：\n";
-                advice += "   - 现金为主，持股为辅\n";
-                advice += "   - 当前建议仓位：0-30%\n";
+                advice += "   - 现金为主，持��为辅\n";
+                advice += "   - 建议仓位：0-30%\n";
                 advice += "   减仓条件：\n";
                 advice += "   1) 反弹无力：\n";
                 advice += "      - 触及MA20即回落\n";
@@ -429,6 +432,213 @@ class StockAnalyzer {
         }
         
         return advice;
+    }
+
+    // 新增趋势转折点分析
+    analyzeTrendTurningPoint(data) {
+        const prices = data.map(item => item.close);
+        const ma20 = this.calculateMA(20, prices);
+        
+        // 1. MA20形态转折分析
+        const ma20Shape = this.analyzeMa20Shape(prices, ma20);
+        
+        // 2. 趋势级别判断
+        const trendLevel = this.analyzeTrendLevel(prices, ma20);
+        
+        // 3. 转折确认信号
+        const turningSignal = this.confirmTurningPoint(prices, ma20);
+        
+        return {
+            shape: ma20Shape,
+            level: trendLevel,
+            signal: turningSignal
+        };
+    }
+
+    // 新增市场阶段和量价分析
+    analyzeStageAndVolume(data) {
+        const prices = data.map(item => item.close);
+        const volumes = data.map(item => item.volume);
+        
+        // 1. 阶段判断
+        const stage = this.determineMarketStage(prices, volumes);
+        
+        // 2. 该阶段的典型量价特征
+        const volumePricePattern = this.analyzeStageVolumePrice(prices, volumes, stage);
+        
+        // 3. 偏离度分析
+        const deviation = this.analyzePatternDeviation(prices, volumes, stage);
+        
+        return {
+            currentStage: stage,
+            pattern: volumePricePattern,
+            deviation: deviation
+        };
+    }
+
+    // 新增主力资金分析
+    analyzeInstitutionalBehavior(data) {
+        const prices = data.map(item => item.close);
+        const volumes = data.map(item => item.volume);
+        
+        // 1. 主力资金特征
+        const capitalFeatures = this.analyzeCapitalFeatures(prices, volumes);
+        
+        // 2. 主力行为阶段
+        const behaviorStage = this.determineCapitalStage(prices, volumes);
+        
+        // 3. 主力意图判断
+        const intention = this.analyzeCapitalIntention(prices, volumes);
+        
+        return {
+            features: capitalFeatures,
+            stage: behaviorStage,
+            intention: intention
+        };
+    }
+
+    // 辅助方法 - MA20形态分析
+    analyzeMa20Shape(prices, ma20) {
+        // 计���最近20天的MA20值
+        const recentMa20Values = prices.slice(-20).map((_, index, array) => {
+            const start = Math.max(0, array.length - 20 + index);
+            const slice = array.slice(start, array.length - 20 + index + 1);
+            return slice.reduce((a, b) => a + b, 0) / slice.length;
+        });
+        
+        // 计算斜率
+        const slope = (recentMa20Values[recentMa20Values.length - 1] - recentMa20Values[0]) / 20;
+        
+        if (slope > 0.01) return "向上倾斜";
+        if (slope < -0.01) return "向下倾斜";
+        return "横盘整理";
+    }
+
+    // 辅助方法 - 趋势级别判断
+    analyzeTrendLevel(prices, ma20) {
+        const priceChange = this.calculatePriceChange(prices, 20);
+        
+        if (Math.abs(priceChange) > 20) return "大级别趋势";
+        if (Math.abs(priceChange) > 10) return "中级别趋势";
+        return "小级别趋势";
+    }
+
+    // 辅助方法 - 转折点确认
+    confirmTurningPoint(prices, ma20) {
+        // 计算最近5天的价格和MA20值
+        const recentPrices = prices.slice(-5);
+        const recentMa20Values = prices.slice(-5).map((_, index, array) => {
+            const start = Math.max(0, array.length - 20 + index);
+            const slice = array.slice(start, array.length - 20 + index + 1);
+            return slice.reduce((a, b) => a + b, 0) / slice.length;
+        });
+        
+        // 判断是否形成转折
+        const priceChange = (recentPrices[4] - recentPrices[0]) / recentPrices[0] * 100;
+        const ma20Change = (recentMa20Values[4] - recentMa20Values[0]) / recentMa20Values[0] * 100;
+        
+        if (priceChange > 0 && ma20Change > 0) return "向上转折";
+        if (priceChange < 0 && ma20Change < 0) return "向下转折";
+        return "无明显转折";
+    }
+
+    // 辅助方法 - 市场阶段判断
+    determineMarketStage(prices, volumes) {
+        const volumeChange = this.calculateVolumeChange(volumes);
+        const priceChange = this.calculatePriceChange(prices, 20);
+        
+        if (volumeChange < -20 && priceChange > 0) return "建仓阶段";
+        if (volumeChange > 30 && priceChange > 8) return "上升阶段";
+        if (volumeChange > 50 && priceChange < 3) return "派发阶段";
+        if (volumeChange > 30 && priceChange < -8) return "下跌阶段";
+        return "盘整阶段";
+    }
+
+    // 辅助方法 - 阶段量价特征分析
+    analyzeStageVolumePrice(prices, volumes, stage) {
+        switch(stage) {
+            case "建仓阶段":
+                return "缩量调整，温和放量上涨";
+            case "上升阶段":
+                return "量价齐升，买盘积极";
+            case "派发阶段":
+                return "高位放量，上涨乏力";
+            case "下跌阶段":
+                return "放量下跌，卖压沉重";
+            default:
+                return "量价平稳，无明显特征";
+        }
+    }
+
+    // 辅助方法 - 模式偏离度分析
+    analyzePatternDeviation(prices, volumes, stage) {
+        const volumeChange = this.calculateVolumeChange(volumes);
+        const priceChange = this.calculatePriceChange(prices, 20);
+        
+        switch(stage) {
+            case "建仓阶段":
+                if (volumeChange > -10) return "偏离：成交量未充分萎缩";
+                if (priceChange < -5) return "偏离：价格下跌过大";
+                return "符合特征";
+                
+            case "上升阶段":
+                if (volumeChange < 20) return "偏离：量能不足";
+                if (priceChange < 5) return "偏离：涨幅不足";
+                return "符合特征";
+                
+            case "派发阶段":
+                if (volumeChange < 40) return "偏离：量能不足";
+                if (priceChange > 5) return "偏离：涨幅过大";
+                return "符合特征";
+                
+            case "下跌阶段":
+                if (volumeChange < 20) return "偏离：量能不足";
+                if (priceChange > -5) return "偏离：跌幅不足";
+                return "符合特征";
+                
+            default:
+                return "盘整阶段无明显偏离";
+        }
+    }
+
+    // 辅助方法 - 主力资金特征分析
+    analyzeCapitalFeatures(prices, volumes) {
+        const volumeChange = this.calculateVolumeChange(volumes);
+        const priceChange = this.calculatePriceChange(prices, 5);
+        
+        if (volumeChange > 50) return "主力资金活跃";
+        if (volumeChange < -30) return "主力资金撤离";
+        return "主力资金平稳";
+    }
+
+    // 辅助方法 - 主力行为阶段判断
+    determineCapitalStage(prices, volumes) {
+        const stage = this.determineMarketStage(prices, volumes);
+        const features = this.analyzeCapitalFeatures(prices, volumes);
+        
+        if (features === "主力资金活跃" && stage === "上升阶段")
+            return "主力拉升";
+        if (features === "主力资金活跃" && stage === "派发阶段")
+            return "主力派发";
+        if (features === "主力资金撤离")
+            return "主力撤离";
+        return "主力观望";
+    }
+
+    // 辅助方法 - 主力意图分析
+    analyzeCapitalIntention(prices, volumes) {
+        const stage = this.determineCapitalStage(prices, volumes);
+        
+        switch(stage) {
+            case "主力拉升":
+                return "意图推高股价";
+            case "主力派发":
+                return "意图出货减仓";
+            case "主力撤离":
+                return "看空后市";
+            default:
+                return "等待时机";
+        }
     }
 
     // 辅助方法
@@ -540,13 +750,37 @@ class StockController {
             
             // 更新分析结果
             setTextareaContent('ma20Analysis', analysis.ma20Analysis);
+            
+            // 新增：趋势转折点分析
+            setTextareaContent('trendTurningPoint', 
+                `MA20形态：${analysis.trend.shape}\n转折信号：${analysis.trend.signal}`);
+            
+            // 新增：趋势级别
+            setTextareaContent('trendLevel', 
+                `趋势级别：${analysis.trend.level}`);
+            
+            // 更新量价分析
             setTextareaContent('volumePriceAnalysis', analysis.volumePriceAnalysis);
+            
+            // 新增：市场阶段
+            setTextareaContent('marketStage', 
+                `当前阶段：${analysis.stage.currentStage}\n` +
+                `量价特征：${analysis.stage.pattern}\n` +
+                `偏离程度：${analysis.stage.deviation}`);
+            
+            // 新增：主力资金分析
+            setTextareaContent('institutionalAnalysis', 
+                `资金特征：${analysis.institutional.features}\n` +
+                `行为阶段：${analysis.institutional.stage}\n` +
+                `主力意图：${analysis.institutional.intention}`);
+            
+            // 更新市场特征和操作建议
             setTextareaContent('marketCharacter', analysis.marketCharacter);
             setTextareaContent('operationAdvice', analysis.operationAdvice);
             
         } catch (error) {
             console.error('分析股票时出错:', error);
-            this.showError(error.message || '分析过程中出现错误');
+            this.showError(`数据获取失败: ${error.message}`);
             throw error;
         } finally {
             this.hideLoading();
@@ -587,7 +821,7 @@ window.analyzeStock = async function() {
         }
         
         if (!/^[A-Z]{1,5}$/.test(symbol)) {
-            throw new Error('请输入正确的美股代码格式');
+            throw new Error('请输入正确的美股代码，例如：AAPL、MSFT、GOOGL');
         }
         
         await controller.analyzeStock(symbol);
@@ -614,3 +848,5 @@ window.changePeriod = function() {
     const period = parseInt(document.getElementById('periodSelector').value);
     stockController.chartManager.changePeriod(period);
 };
+
+
