@@ -9,17 +9,7 @@ class StockAPI {
     }
 
     getApiBaseUrl() {
-        // 获取当前页面的协议和主机名
-        const protocol = window.location.protocol;
-        const hostname = window.location.hostname;
-        const port = '4001';
-        
-        // 如果是本地开发环境
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return `${protocol}//${hostname}:${port}/api/stock`;
-        }
-        
-        // 生产环境
+        // 始终返回规范的 URL
         return '/api/stock';
     }
 
@@ -290,7 +280,7 @@ class StockAnalyzer {
             if (priceChange > 8) {
                 analysis += "缩量上涨，上涨乏力";
             } else if (priceChange < -8) {
-                analysis += "缩量下跌，下跌趋缓";
+                analysis += "���量下跌，下跌趋缓";
             }
         } else {
             analysis += "成交量基本平稳";
@@ -322,7 +312,7 @@ class StockAnalyzer {
                 
             default:
                 explanation += "盘整市场特征\n";
-                explanation += "1. 均线系统交织\n";
+                explanation += "1. 均���系统交织\n";
                 explanation += `2. 价格在MA20(${ma20.toFixed(2)})附近波动\n`;
                 explanation += "3. 成交量和涨跌幅度均未达到趋势场特征\n";
         }
@@ -349,7 +339,7 @@ class StockAnalyzer {
                 advice += "     1) MA20持续向上倾斜\n";
                 advice += "     2) 连续3天站稳MA20上方\n";
                 advice += "     3) 成交量较前温和放大\n";
-                advice += "   买入方式：\n";
+                advice += "   买入方���：\n";
                 advice += "   - 第一批：确认企稳后买入60%\n";
                 advice += "   - 第二批：突破阶段新高后补仓30%\n";
                 advice += "     阶段新高判断：\n";
@@ -499,7 +489,7 @@ class StockAnalyzer {
 
     // 辅助方法 - MA20形态分析
     analyzeMa20Shape(prices, ma20) {
-        // 计���最近20天的MA20值
+        // 计算最近20天的MA20值
         const recentMa20Values = prices.slice(-20).map((_, index, array) => {
             const start = Math.max(0, array.length - 20 + index);
             const slice = array.slice(start, array.length - 20 + index + 1);

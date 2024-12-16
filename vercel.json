@@ -18,8 +18,32 @@
             "dest": "/api/$1.js"
         },
         {
+            "handle": "rewrite",
+            "source": "^/www\\.(.*)",
+            "destination": "/$1",
+            "status": 301,
+            "headers": {
+                "Location": "https://stockanalyse.site/$1"
+            }
+        },
+        {
             "src": "/(.*)",
             "dest": "/public/$1"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "X-Robots-Tag",
+                    "value": "index, follow"
+                },
+                {
+                    "key": "Link",
+                    "value": "<https://stockanalyse.site>; rel=\"canonical\""
+                }
+            ]
         }
     ]
 }

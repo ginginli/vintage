@@ -1,3 +1,9 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+
+# 明确指定规范域名
+Host: https://stockanalyse.site
+
+# 站点地图位置
 Sitemap: https://stockanalyse.site/sitemap.xml 
