@@ -6,6 +6,32 @@
     ],
     "routes": [
         {
+            "src": "/(.*)",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "vintage-laineys-projects.vercel.app"
+                }
+            ],
+            "status": 301,
+            "headers": {
+                "Location": "https://stockanalyse.site/$1"
+            }
+        },
+        {
+            "src": "/(.*)",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "vintage-git-main-laineys-projects.vercel.app"
+                }
+            ],
+            "status": 301,
+            "headers": {
+                "Location": "https://stockanalyse.site/$1"
+            }
+        },
+        {
             "src": "/sitemap.xml",
             "dest": "/public/sitemap.xml"
         },

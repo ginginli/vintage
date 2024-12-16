@@ -2,8 +2,16 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-# 明确指定规范域名
+# 明确指定主域名
 Host: https://stockanalyse.site
 
-# 站点地图位置
+# 禁止爬虫访问 Vercel 默认域名
+User-agent: *
+Disallow: /
+Host: vintage-laineys-projects.vercel.app
+
+User-agent: *
+Disallow: /
+Host: vintage-git-main-laineys-projects.vercel.app
+
 Sitemap: https://stockanalyse.site/sitemap.xml 
