@@ -44,9 +44,7 @@
             "dest": "/api/$1.js"
         },
         {
-            "handle": "rewrite",
-            "source": "^/www\\.(.*)",
-            "destination": "/$1",
+            "src": "^/www\\.(.*)",
             "status": 301,
             "headers": {
                 "Location": "https://stockanalyse.site/$1"
