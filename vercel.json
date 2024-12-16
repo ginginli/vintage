@@ -4,56 +4,40 @@
         { "src": "api/**/*.js", "use": "@vercel/node" },
         { "src": "public/**", "use": "@vercel/static" }
     ],
-    "routes": [
+    "redirects": [
         {
-            "src": "/(.*)",
+            "source": "/(.*)",
             "has": [
                 {
                     "type": "host",
                     "value": "vintage-laineys-projects.vercel.app"
                 }
             ],
-            "status": 301,
-            "headers": {
-                "Location": "https://stockanalyse.site/$1"
-            }
+            "destination": "https://stockanalyse.site/$1",
+            "permanent": true
         },
         {
-            "src": "/(.*)",
+            "source": "/(.*)",
             "has": [
                 {
                     "type": "host",
                     "value": "vintage-git-main-laineys-projects.vercel.app"
                 }
             ],
-            "status": 301,
-            "headers": {
-                "Location": "https://stockanalyse.site/$1"
-            }
+            "destination": "https://stockanalyse.site/$1",
+            "permanent": true
         },
         {
-            "src": "/sitemap.xml",
-            "dest": "/public/sitemap.xml"
-        },
-        {
-            "src": "/robots.txt",
-            "dest": "/public/robots.txt"
-        },
-        {
-            "src": "/api/(.*)",
-            "dest": "/api/$1.js"
-        },
-        {
-            "src": "^/www\\.(.*)",
-            "status": 301,
-            "headers": {
-                "Location": "https://stockanalyse.site/$1"
-            }
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/public/$1"
+            "source": "/www/(.*)",
+            "destination": "https://stockanalyse.site/$1",
+            "permanent": true
         }
+    ],
+    "rewrites": [
+        { "source": "/sitemap.xml", "destination": "/public/sitemap.xml" },
+        { "source": "/robots.txt", "destination": "/public/robots.txt" },
+        { "source": "/api/(.*)", "destination": "/api/$1.js" },
+        { "source": "/(.*)", "destination": "/public/$1" }
     ],
     "headers": [
         {
