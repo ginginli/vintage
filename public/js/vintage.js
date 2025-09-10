@@ -674,6 +674,18 @@ window.analyzeStock = async function() {
         
         await controller.analyzeStock(symbol);
 
+        // 获取并渲染 8 条标准
+        try {
+            const criteria = await fetchCriteria(symbol);
+            renderCriteria(criteria);
+        } catch (e) {
+            console.warn('获取8条标准失败：', e);
+            const list = document.getElementById('criteriaList');
+            if (list) {
+                list.innerHTML = '<li class="criteria-item"><span class="criteria-title">无法获取8条标准</span><span class="criteria-badge criteria-fail">错误</span></li>';
+            }
+        }
+
     } catch (error) {
         console.error('分析过程中出错:', error);
         const errorMessage = document.getElementById('errorMessage');
