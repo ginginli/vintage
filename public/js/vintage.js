@@ -6,6 +6,7 @@ class StockAPI {
     constructor() {
         this.lastRequestTime = 0;
         this.API_BASE_URL = this.getApiBaseUrl();
+        this.ANALYSIS_API_BASE_URL = this.getAnalysisApiBaseUrl();
     }
 
     getApiBaseUrl() {
@@ -19,6 +20,14 @@ class StockAPI {
         
         // 生产环境使用相对路径
         return '/api/stock';
+    }
+
+    getAnalysisApiBaseUrl() {
+        const currentPort = window.location.port;
+        if (window.location.hostname === 'localhost') {
+            return `http://localhost:${currentPort}/api/analysis`;
+        }
+        return '/api/analysis';
     }
 
     async fetchStockData(symbol) {
@@ -491,6 +500,79 @@ class StockAnalyzer {
             case 'down': return "向下倾斜（趋势转弱）";
             default: return "横盘震荡";
         }
+    }
+}
+
+// 3. 新增：调用后端 /api/analysis 获取 8 条标准
+async function fetchCriteria(symbol) {
+    const api = new StockAPI();
+    const url = `${api.ANALYSIS_API_BASE_URL}?symbol=${encodeURIComponent(symbol)}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error(`分析接口错误: ${res.status}`);
+    }
+    const data = await res.json();
+    if (!data.success) {
+        throw new Error(data.error || '分析失败');
+    }
+    return data.analysis.criteria;
+}
+
+function renderCriteria(criteria) {
+    const list = document.getElementById('criteriaList');
+    if (!list) return;
+    list.innerHTML = '';
+    criteria.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'criteria-item';
+        const title = document.createElement('span');
+        title.className = 'criteria-title';
+        title.textContent = `${item.id}. ${item.title}`;
+        const badge = document.createElement('span');
+        badge.className = `criteria-badge ${item.pass ? 'criteria-pass' : 'criteria-fail'}`;
+        badge.textContent = item.pass ? '满足' : '不满足';
+        li.appendChild(title);
+        li.appendChild(badge);
+        list.appendChild(li);
+    });
+}
+
+// 4. 接入现有 analyzeStock 流程
+window.analyzeStock = async function() {
+    try {
+        const input = document.getElementById('stockCode');
+        const symbol = input.value.trim().toUpperCase();
+        if (!symbol) return;
+
+        document.getElementById('errorMessage').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+
+        const api = new StockAPI();
+        const stockData = await api.fetchStockData(symbol);
+        const chartManager = new ChartManager();
+        chartManager.fullData = stockData;
+        chartManager.changePeriod(parseInt(document.getElementById('periodSelector').value, 10));
+
+        const analyzer = new StockAnalyzer();
+        const result = analyzer.analyze(stockData);
+        setTextareaContent('ma20Analysis', result.ma20Analysis);
+        setTextareaContent('volumePriceAnalysis', result.volumePriceAnalysis);
+        setTextareaContent('marketCharacter', result.marketCharacter);
+        setTextareaContent('operationAdvice', result.operationAdvice);
+
+        // 获取并渲染 8 条标准
+        try {
+            const criteria = await fetchCriteria(symbol);
+            renderCriteria(criteria);
+        } catch (e) {
+            console.warn('获取8条标准失败：', e);
+        }
+    } catch (error) {
+        const errEl = document.getElementById('errorMessage');
+        errEl.textContent = error.message || '发生未知错误';
+        errEl.style.display = 'block';
+    } finally {
+        document.getElementById('loading').style.display = 'none';
     }
 }
 // 3. StockController 类

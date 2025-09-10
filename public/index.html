@@ -597,6 +597,13 @@
             border-left: 4px solid #4CAF50;
             width: 100%;
         }
+        /* 8条标准样式 */
+        .criteria-list { list-style: none; padding: 0; margin: 0; }
+        .criteria-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid #eee; border-radius: 6px; margin-bottom: 10px; background: #fff; }
+        .criteria-title { font-weight: 600; color: #333; }
+        .criteria-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; }
+        .criteria-pass { background: #e8f5e9; color: #1b5e20; }
+        .criteria-fail { background: #ffebee; color: #b71c1c; }
 
         /* 响应式布局调整 */
         @media screen and (max-width: 768px) {
@@ -968,6 +975,15 @@
         </div>
         
         <div class="analysis-container">
+            <!-- 8条标准区域 -->
+            <h3 class="standalone-title">8条标准判定</h3>
+            <div class="analysis-section">
+                <div class="analysis-card">
+                    <div class="card-title">标准列表</div>
+                    <ul id="criteriaList" class="criteria-list"></ul>
+                </div>
+            </div>
+
             <!-- 市场特征判断标题 -->
             <h3 class="standalone-title">市场特征判断</h3>
             

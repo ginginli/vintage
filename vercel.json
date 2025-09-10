@@ -11,6 +11,11 @@
             "dest": "api/stock.js"
         },
         {
+            "src": "/api/analysis",
+            "methods": ["GET", "POST"],
+            "dest": "api/analysis.js"
+        },
+        {
             "src": "/api/health",
             "methods": ["GET"],
             "dest": "api/health.js"
