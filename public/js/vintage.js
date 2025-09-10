@@ -525,14 +525,101 @@ function renderCriteria(criteria) {
     criteria.forEach(item => {
         const li = document.createElement('li');
         li.className = 'criteria-item';
+
+        const container = document.createElement('div');
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.width = '100%';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+
         const title = document.createElement('span');
         title.className = 'criteria-title';
         title.textContent = `${item.id}. ${item.title}`;
+
         const badge = document.createElement('span');
         badge.className = `criteria-badge ${item.pass ? 'criteria-pass' : 'criteria-fail'}`;
         badge.textContent = item.pass ? '满足' : '不满足';
-        li.appendChild(title);
-        li.appendChild(badge);
+
+        header.appendChild(title);
+        header.appendChild(badge);
+        container.appendChild(header);
+
+        // 附加数据与备注
+        const detail = item.detail || {};
+        const extras = document.createElement('div');
+        extras.style.marginTop = '8px';
+        extras.style.display = 'grid';
+        extras.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
+        extras.style.gap = '8px';
+
+        function addBox(label, value) {
+            const box = document.createElement('div');
+            box.style.background = '#f8f9fa';
+            box.style.border = '1px solid #eee';
+            box.style.borderRadius = '6px';
+            box.style.padding = '6px 8px';
+            box.textContent = `${label}: ${value}`;
+            extras.appendChild(box);
+        }
+
+        function addNote(text) {
+            const note = document.createElement('div');
+            note.style.marginTop = '6px';
+            note.style.color = '#666';
+            note.style.fontSize = '12px';
+            note.textContent = text;
+            container.appendChild(note);
+        }
+
+        if (item.id === 3) {
+            // 标准3：展示200日均线上涨交易日天数
+            if (typeof detail.upDays === 'number') {
+                addBox('200日均线上涨天数', `${detail.upDays} 天`);
+            }
+        }
+
+        if (item.id === 5) {
+            // 标准5：低点与高于低点的百分比
+            if (typeof detail.low52w === 'number') {
+                addBox('52周低点', detail.low52w.toFixed(2));
+            }
+            if (typeof detail.aboveLowPct === 'number') {
+                addBox('高于52周低点', `${detail.aboveLowPct.toFixed(2)}%`);
+            }
+            addNote('备注：许多最佳选择在走出健康的盘整期并大幅上涨之前，将比其52周低点高出100%、300%或更多。');
+        }
+
+        if (item.id === 6) {
+            // 标准6：高点与低于高点的百分比（新定义）
+            if (typeof detail.high52w === 'number') {
+                addBox('52周高点', detail.high52w.toFixed(2));
+            }
+            if (typeof detail.belowHighPct === 'number') {
+                addBox('低于52周高点', `${detail.belowHighPct.toFixed(2)}%`);
+            }
+            addNote('备注：越接近新高越好。');
+        }
+
+        if (item.id === 7) {
+            // 标准7：RS值与上行周数
+            if (typeof detail.rsApprox === 'number') {
+                addBox('RS值(近似)', detail.rsApprox.toFixed(2));
+            }
+            if (typeof detail.rsTrendWeeks === 'number') {
+                addBox('RS线上行', `${detail.rsTrendWeeks} 周`);
+            }
+            addNote('备注：RS线不应处于强烈的下行趋势。我喜欢看到RS线至少6周处于上行趋势，最好13周或更长。');
+        }
+
+        if (extras.childElementCount > 0) {
+            container.appendChild(extras);
+        }
+
+        li.appendChild(container);
         list.appendChild(li);
     });
 }

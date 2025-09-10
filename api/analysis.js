@@ -104,8 +104,8 @@ function analyzeStockData(stockData) {
     const last252 = stockData.slice(-252);
     const high52w = Math.max(...last252.map(d => d.high));
     const low52w = Math.min(...last252.map(d => d.low));
-    const aboveLowPct = low52w ? ((lastClose - low52w) / low52w) * 100 : null;
-    const withinHighPct = high52w ? ((high52w - lastClose) / high52w) * 100 : null;
+    const aboveLowPct = low52w ? ((lastClose - low52w) / low52w) * 100 : null; // 高于低点的比例
+    const belowHighPct = high52w ? ((high52w - lastClose) / high52w) * 100 : null; // 低于高点的比例
 
     // 简化 RS：以过去 252 天收益相对于简单基准（等于自身最大收益）来近似
     // 注意：这非 IBD 官方 RS 排名，仅占位近似。返回趋势周数。
@@ -157,9 +157,9 @@ function analyzeStockData(stockData) {
         },
         {
             id: 6,
-            title: '现价距离52周高点不超过25%',
-            pass: withinHighPct !== null && withinHighPct <= 25,
-            detail: { high52w, belowHighPct: withinHighPct }
+            title: '现价至少比52周高点低25%',
+            pass: belowHighPct !== null && belowHighPct >= 25,
+            detail: { high52w, belowHighPct }
         },
         {
             id: 7,
