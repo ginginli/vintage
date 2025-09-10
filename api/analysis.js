@@ -157,7 +157,7 @@ function analyzeStockData(stockData) {
         },
         {
             id: 6,
-            title: '现价距离52周高点不超过25%（越接近新高越好）',
+            title: '现价比52周高点至多低25%',
             pass: belowHighPct !== null && belowHighPct <= 25,
             detail: { high52w, belowHighPct }
         },
