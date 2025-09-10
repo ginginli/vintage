@@ -107,12 +107,13 @@ function analyzeStockData(stockData) {
     const aboveLowPct = low52w ? ((lastClose - low52w) / low52w) * 100 : null; // 高于低点的比例
     const belowHighPct = high52w ? ((high52w - lastClose) / high52w) * 100 : null; // 低于高点的比例
 
-    // 简化 RS：以过去 252 天收益相对于简单基准（等于自身最大收益）来近似
-    // 注意：这非 IBD 官方 RS 排名，仅占位近似。返回趋势周数。
+    // RS 相关占位，若 GET 路径提供了基准，会被覆盖
     const basePrice = closePrices[0];
     const totalReturn = basePrice ? (lastClose / basePrice - 1) * 100 : null;
-    const rsApprox = totalReturn !== null ? Math.max(0, Math.min(100, totalReturn)) : null;
-    const rsTrendWeeks = Math.floor(daysTrendingUp(closePrices) / 5);
+    let rsApprox = totalReturn !== null ? Math.max(0, Math.min(100, totalReturn)) : null;
+    let rsOutperformancePct = null; // 相对于基准SPY的超额收益%（>0 表示跑赢）
+    let rsTrendWeeks = Math.floor(daysTrendingUp(closePrices) / 5);
+    let rsBenchmark = null;
 
     let avgVol = null;
     if (volumes.length >= 20) {
@@ -189,7 +190,13 @@ function analyzeStockData(stockData) {
         },
         signal,
         reasons,
-        criteria
+        criteria,
+        rs: {
+            benchmark: rsBenchmark,
+            rsApprox,
+            rsOutperformancePct,
+            rsTrendWeeks
+        }
     };
 }
 
@@ -242,7 +249,78 @@ export default async function handler(req, res) {
             }))
             .reverse();
 
-        const analysis = analyzeStockData(stockData);
+        // 同步获取 SPY 作为 S&P 500 基准
+        const spyUrl = `${apiBaseUrl}?function=TIME_SERIES_DAILY&symbol=SPY&outputsize=full&apikey=${apiKey}`;
+        const spyResp = await fetch(spyUrl);
+        const spyData = await spyResp.json();
+        const spyTs = spyData['Time Series (Daily)'];
+
+        let analysis = analyzeStockData(stockData);
+
+        if (spyTs) {
+            const spySeries = Object.entries(spyTs)
+                .slice(0, 300)
+                .map(([date, values]) => ({
+                    date,
+                    close: Number(values['4. close'])
+                }))
+                .reverse();
+
+            // 对齐日期区间
+            const spyMap = new Map(spySeries.map(d => [d.date, d.close]));
+            const aligned = analysis && Array.isArray(stockData)
+                ? stockData.filter(d => spyMap.has(d.date))
+                : [];
+
+            if (aligned.length >= 30) {
+                const stockCloses = aligned.map(d => d.close);
+                const spyCloses = aligned.map(d => spyMap.get(d.date));
+
+                const stockFirst = stockCloses[0];
+                const stockLast = stockCloses[stockCloses.length - 1];
+                const spyFirst = spyCloses[0];
+                const spyLast = spyCloses[spyCloses.length - 1];
+
+                const stockReturn = stockFirst ? stockLast / stockFirst : null;
+                const spyReturn = spyFirst ? spyLast / spyFirst : null;
+
+                if (stockReturn !== null && spyReturn !== null) {
+                    const rel = stockReturn / spyReturn; // >1 跑赢
+                    const relPct = (rel - 1) * 100;
+
+                    // 构造相对强弱序列用于趋势周数估计
+                    const rsSeries = stockCloses.map((v, i) => v / (spyCloses[i] || 1e-9));
+                    const rsTrendDays = daysTrendingUp(rsSeries);
+                    const rsTrendWeeks = Math.floor(rsTrendDays / 5);
+
+                    // 把超额收益粗略映射到 0-100 区间：0% 对应 50，+50% → 100，-50% → 0
+                    const rsApprox = Math.max(0, Math.min(100, 50 + relPct));
+
+                    // 更新第7条标准的细节
+                    analysis.rs = {
+                        benchmark: 'SPY',
+                        rsApprox,
+                        rsOutperformancePct: relPct,
+                        rsTrendWeeks
+                    };
+
+                    // 更新 criteria 第7项的 pass 与 detail
+                    if (Array.isArray(analysis.criteria)) {
+                        const c7 = analysis.criteria.find(c => c.id === 7);
+                        if (c7) {
+                            c7.pass = rsApprox >= 70 && rsTrendWeeks >= 6;
+                            c7.detail = {
+                                rsApprox,
+                                rsTrendWeeks,
+                                rsOutperformancePct: relPct,
+                                benchmark: 'SPY'
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
         return res.status(200).json({ success: true, source: 'remote', symbol, analysis });
     } catch (error) {
         console.error('Analysis API Error:', error);
