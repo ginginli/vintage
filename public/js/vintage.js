@@ -575,16 +575,13 @@ function renderCriteria(criteria) {
             container.appendChild(note);
         }
 
-        if (item.id === 2) {
-            // 标准2备注
-            addNote('备注：最好 4 到 5 个月或更长时间。');
-        }
-
         if (item.id === 3) {
             // 标准3：展示200日均线上涨交易日天数
             if (typeof detail.upDays === 'number') {
                 addBox('200日均线上涨天数', `${detail.upDays} 天`);
             }
+            // 标准3备注
+            addNote('备注：最好 4 到 5 个月或更长时间。');
         }
 
         if (item.id === 5) {
