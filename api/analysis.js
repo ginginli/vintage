@@ -141,7 +141,7 @@ function analyzeStockData(stockData) {
         {
             id: 3,
             title: '200日均线至少上涨1个月',
-            pass: isTrendingUp(ma200, 21),
+            pass: daysTrendingUp(ma200) >= 21,
             detail: { upDays: daysTrendingUp(ma200) }
         },
         {
