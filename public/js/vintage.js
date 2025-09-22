@@ -661,7 +661,12 @@ function renderVcp(vcp) {
 
     const tbody = tableEl.querySelector('tbody');
     tbody.innerHTML = '';
-    (vcp.contractions || []).forEach((c, idx) => {
+    const rows = (vcp.contractions || []).slice().sort((a, b) => {
+        const da = new Date(a.endDate || a.startDate || 0).getTime();
+        const db = new Date(b.endDate || b.startDate || 0).getTime();
+        return db - da; // 按结束日期降序
+    });
+    rows.forEach((c, idx) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td style="padding:6px; border:1px solid #eee;">${idx+1}</td>`+
                        `<td style=\"padding:6px; border:1px solid #eee;\">${c.startDate || ''}</td>`+
