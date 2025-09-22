@@ -1,5 +1,68 @@
 import fetch from 'node-fetch';
 
+async function fetchIbdRsData(symbol) {
+    const baseUrl = process.env.IBD_API_BASE_URL;
+    const apiKey = process.env.IBD_API_KEY;
+    if (!baseUrl || !apiKey || !symbol) {
+        return null;
+    }
+    const url = `${baseUrl}/rs?symbol=${encodeURIComponent(symbol)}`;
+    try {
+        const resp = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        // 期望数据结构示例：{ rsRating: 92, rsLine: [{date, value}, ...] }
+        if (!data || typeof data.rsRating !== 'number') return null;
+        // 计算 RS 线最近连续上行的“周数”（基于日序列粗略折算，5个交易日≈1周）
+        let rsTrendWeeks = 0;
+        if (Array.isArray(data.rsLine) && data.rsLine.length >= 2) {
+            const values = data.rsLine.map(d => Number(d.value)).filter(v => Number.isFinite(v));
+            for (let i = values.length - 1; i > 0; i--) {
+                if (values[i] > values[i - 1]) rsTrendWeeks++; else break;
+            }
+            rsTrendWeeks = Math.floor(rsTrendWeeks / 5);
+        }
+        return {
+            rsRating: Math.max(0, Math.min(99, Math.round(data.rsRating))),
+            rsTrendWeeks
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function computePercentileRank(value, values) {
+    if (!Array.isArray(values) || values.length === 0 || !Number.isFinite(value)) return null;
+    const sorted = values.slice().filter(v => Number.isFinite(v)).sort((a, b) => a - b);
+    if (sorted.length === 0) return null;
+    let count = 0;
+    for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i] <= value) count++; else break;
+    }
+    const pct = count / sorted.length; // 0..1
+    return Math.max(1, Math.min(99, Math.round(pct * 100)));
+}
+
+function computeReturnFromCloses(closes, lookbackDays = 126) {
+    if (!Array.isArray(closes) || closes.length < lookbackDays + 1) return null;
+    const first = closes[closes.length - lookbackDays - 1];
+    const last = closes[closes.length - 1];
+    if (!first || !last) return null;
+    return last / first - 1;
+}
+
+async function fetchDailyCloses(apiBaseUrl, apiKey, symbol, limit = 260) {
+    const url = `${apiBaseUrl}?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(symbol)}&outputsize=full&apikey=${apiKey}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const ts = data && data['Time Series (Daily)'];
+    if (!ts) return null;
+    const series = Object.entries(ts).slice(0, limit).map(([date, v]) => ({ date, close: Number(v['4. close']) })).reverse();
+    return series.map(d => d.close);
+}
+
 function calculateSimpleMovingAverage(values, period) {
     if (!Array.isArray(values) || values.length < period) {
         return [];
@@ -18,29 +81,7 @@ function calculateSimpleMovingAverage(values, period) {
     return result;
 }
 
-function calculateRsi(closePrices, period = 14) {
-    if (!Array.isArray(closePrices) || closePrices.length <= period) {
-        return [];
-    }
-    const gains = [];
-    const losses = [];
-    for (let i = 1; i < closePrices.length; i++) {
-        const change = closePrices[i] - closePrices[i - 1];
-        gains.push(Math.max(change, 0));
-        losses.push(Math.max(-change, 0));
-    }
-    const rsi = new Array(period).fill(null);
-    let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    for (let i = period; i < gains.length; i++) {
-        avgGain = (avgGain * (period - 1) + gains[i]) / period;
-        avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
-        const rs = avgLoss === 0 ? 100 : avgGain / (avgLoss || 1e-9);
-        const value = 100 - 100 / (1 + rs);
-        rsi.push(value);
-    }
-    return rsi;
-}
+// 移除 RSI 的计算与使用，改由 IBD 的 RS Rating 与 RS 线支撑第七条标准
 
 function calculateMovingAverage(values, period) {
     return calculateSimpleMovingAverage(values, period);
@@ -72,14 +113,12 @@ function analyzeStockData(stockData) {
     const ma50 = calculateMovingAverage(closePrices, 50);
     const ma150 = calculateMovingAverage(closePrices, 150);
     const ma200 = calculateMovingAverage(closePrices, 200);
-    const rsi14 = calculateRsi(closePrices, 14);
 
     const lastClose = closePrices[closePrices.length - 1];
     const lastMa20 = ma20[ma20.length - 1] ?? null;
     const lastMa50 = ma50[ma50.length - 1] ?? null;
     const lastMa150 = ma150[ma150.length - 1] ?? null;
     const lastMa200 = ma200[ma200.length - 1] ?? null;
-    const lastRsi = rsi14[rsi14.length - 1] ?? null;
 
     let signal = 'neutral';
     const reasons = [];
@@ -92,13 +131,7 @@ function analyzeStockData(stockData) {
             reasons.push('MA20 下穿 MA50，趋势偏弱');
         }
     }
-    if (lastRsi !== null) {
-        if (lastRsi > 70) {
-            reasons.push('RSI 超过 70，存在超买风险');
-        } else if (lastRsi < 30) {
-            reasons.push('RSI 低于 30，可能超卖反弹');
-        }
-    }
+    // 不再添加 RSI 的理由提示
 
     // 52周高低
     const last252 = stockData.slice(-252);
@@ -107,13 +140,9 @@ function analyzeStockData(stockData) {
     const aboveLowPct = low52w ? ((lastClose - low52w) / low52w) * 100 : null; // 高于低点的比例
     const belowHighPct = high52w ? ((high52w - lastClose) / high52w) * 100 : null; // 低于高点的比例
 
-    // RS 相关占位，若 GET 路径提供了基准，会被覆盖
-    const basePrice = closePrices[0];
-    const totalReturn = basePrice ? (lastClose / basePrice - 1) * 100 : null;
-    let rsApprox = totalReturn !== null ? Math.max(0, Math.min(100, totalReturn)) : null;
-    let rsOutperformancePct = null; // 相对于基准SPY的超额收益%（>0 表示跑赢）
-    let rsTrendWeeks = Math.floor(daysTrendingUp(closePrices) / 5);
-    let rsBenchmark = null;
+    // 第七条标准将由 IBD 数据填充（rsRating 与 rsTrendWeeks）
+    let rsRating = null;
+    let rsTrendWeeks = null;
 
     let avgVol = null;
     if (volumes.length >= 20) {
@@ -165,8 +194,8 @@ function analyzeStockData(stockData) {
         {
             id: 7,
             title: '相对强弱排名不低于70，且RS线上行',
-            pass: rsApprox !== null && rsApprox >= 70 && rsTrendWeeks >= 6,
-            detail: { rsApprox, rsTrendWeeks }
+            pass: false,
+            detail: { rsRating, rsTrendWeeks }
         },
         {
             id: 8,
@@ -183,7 +212,6 @@ function analyzeStockData(stockData) {
             ma50: lastMa50,
             ma150: lastMa150,
             ma200: lastMa200,
-            rsi14: lastRsi,
             avgVol20: avgVol,
             high52w,
             low52w
@@ -191,12 +219,7 @@ function analyzeStockData(stockData) {
         signal,
         reasons,
         criteria,
-        rs: {
-            benchmark: rsBenchmark,
-            rsApprox,
-            rsOutperformancePct,
-            rsTrendWeeks
-        }
+            rs: { }
     };
 }
 
@@ -257,6 +280,69 @@ export default async function handler(req, res) {
 
         let analysis = analyzeStockData(stockData);
 
+        // 优先接入 IBD 的 RS 数据
+        const ibd = await fetchIbdRsData(symbol);
+        if (ibd && typeof ibd.rsRating === 'number') {
+            analysis.rs = {
+                source: 'IBD',
+                rsRating: ibd.rsRating,
+                rsTrendWeeks: ibd.rsTrendWeeks
+            };
+            if (Array.isArray(analysis.criteria)) {
+                const c7 = analysis.criteria.find(c => c.id === 7);
+                if (c7) {
+                    c7.pass = ibd.rsRating >= 70 && (ibd.rsTrendWeeks ?? 0) >= 6;
+                    c7.detail = {
+                        rsRating: ibd.rsRating,
+                        rsTrendWeeks: ibd.rsTrendWeeks
+                    };
+                }
+            }
+        }
+
+        // 若未获取到 IBD 数据，尝试横截面“RS 评级代理”（基于横截面百分位）
+        if (!analysis.rs?.rsRating) {
+            // 1) 优先使用用户传入 peers；2) 其后使用 SP500_SYMBOLS 环境变量提供的成分列表（默认限额 pool_limit=50）
+            let peers = (req.query.peers || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+            const useSp500 = (!peers.length && (req.query.pool === 'SP500' || req.query.use_sp500_pool === '1'));
+            if (!peers.length && useSp500) {
+                const sp500Env = (process.env.SP500_SYMBOLS || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+                const poolLimit = Math.max(5, Math.min(50, Number(req.query.pool_limit || 50)));
+                peers = sp500Env.slice(0, poolLimit);
+            }
+            if (peers.length > 0) {
+                // 拉取 peers 与 symbol 的近 6 个月（约 126 交易日）收益
+                const symbols = Array.from(new Set([symbol, ...peers]));
+                const closesMap = new Map();
+                for (const s of symbols) {
+                    try {
+                        const closes = await fetchDailyCloses(apiBaseUrl, apiKey, s, 260);
+                        if (closes) closesMap.set(s, closes);
+                    } catch (_) {}
+                }
+                const lookback = Number(req.query.rs_lookback_days || 126);
+                const returns = [];
+                for (const [sym, closes] of closesMap.entries()) {
+                    const r = computeReturnFromCloses(closes, lookback);
+                    if (r !== null) returns.push({ sym, r });
+                }
+                const base = returns.find(x => x.sym === symbol);
+                if (base && returns.length >= 5) {
+                    const ranks = computePercentileRank(base.r, returns.map(x => x.r));
+                    if (Number.isFinite(ranks)) {
+                        analysis.rs = { source: useSp500 ? 'proxy-SP500' : 'proxy-peers', rsRating: ranks, rsTrendWeeks: null };
+                        const c7 = Array.isArray(analysis.criteria) ? analysis.criteria.find(c => c.id === 7) : null;
+                        if (c7) {
+                            // 暂不判定通过，等待 RS 线趋势（SPY 基准）计算完成
+                            c7.pass = false;
+                            c7.detail = Object.assign({}, c7.detail, { rsRating: ranks, poolSize: returns.length });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 计算 SPY 基准的 RS 线趋势；若已有 rsRating（IBD 或代理）则合并，只做趋势；否则回退方案
         if (spyTs) {
             const spySeries = Object.entries(spyTs)
                 .slice(0, 300)
@@ -293,28 +379,47 @@ export default async function handler(req, res) {
                     const rsTrendDays = daysTrendingUp(rsSeries);
                     const rsTrendWeeks = Math.floor(rsTrendDays / 5);
 
-                    // 把超额收益粗略映射到 0-100 区间：0% 对应 50，+50% → 100，-50% → 0
-                    const rsApprox = Math.max(0, Math.min(100, 50 + relPct));
-
-                    // 更新第7条标准的细节
-                    analysis.rs = {
-                        benchmark: 'SPY',
-                        rsApprox,
-                        rsOutperformancePct: relPct,
-                        rsTrendWeeks
-                    };
-
-                    // 更新 criteria 第7项的 pass 与 detail
-                    if (Array.isArray(analysis.criteria)) {
-                        const c7 = analysis.criteria.find(c => c.id === 7);
-                        if (c7) {
-                            c7.pass = rsApprox >= 70 && rsTrendWeeks >= 6;
-                            c7.detail = {
-                                rsApprox,
-                                rsTrendWeeks,
-                                rsOutperformancePct: relPct,
-                                benchmark: 'SPY'
-                            };
+                    if (analysis.rs?.rsRating) {
+                        // 已有 rsRating（IBD 或代理），仅补充趋势并统一判定
+                        analysis.rs = Object.assign({}, analysis.rs, {
+                            source: analysis.rs.source || 'merged',
+                            benchmark: 'SPY',
+                            rsOutperformancePct: relPct,
+                            rsTrendWeeks
+                        });
+                        if (Array.isArray(analysis.criteria)) {
+                            const c7 = analysis.criteria.find(c => c.id === 7);
+                            if (c7) {
+                                const rating = analysis.rs.rsRating;
+                                c7.pass = rating >= 70 && rsTrendWeeks >= 6;
+                                c7.detail = Object.assign({}, c7.detail, {
+                                    rsRating: rating,
+                                    rsTrendWeeks,
+                                    benchmark: 'SPY'
+                                });
+                            }
+                        }
+                    } else {
+                        // 无 rsRating，使用回退方案（rsApprox）
+                        const rsApprox = Math.max(0, Math.min(100, 50 + relPct));
+                        analysis.rs = {
+                            source: 'fallback-SPY',
+                            benchmark: 'SPY',
+                            rsApprox,
+                            rsOutperformancePct: relPct,
+                            rsTrendWeeks
+                        };
+                        if (Array.isArray(analysis.criteria)) {
+                            const c7 = analysis.criteria.find(c => c.id === 7);
+                            if (c7) {
+                                c7.pass = rsApprox >= 70 && rsTrendWeeks >= 6;
+                                c7.detail = {
+                                    rsApprox,
+                                    rsTrendWeeks,
+                                    rsOutperformancePct: relPct,
+                                    benchmark: 'SPY'
+                                };
+                            }
                         }
                     }
                 }

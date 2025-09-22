@@ -57,8 +57,36 @@ Content-Type: application/json
 
 说明：
 - 该接口与现有 `/api/stock` 相互独立，不影响原有逻辑；
-- `GET` 模式需要配置环境变量 `ALPHA_VANTAGE_API_KEY`（可在 Vercel 项目中配置）；
-- 仅做基础指标演示：`MA20`、`MA50`、`RSI(14)` 与 `20日均量`，并给出简要信号与理由。
+- `GET` 模式需要配置环境变量 `ALPHA_VANTAGE_API_KEY`（可在 Vercel 项目中配置）。
+
+### IBD RS 与 RS 线（第七条标准）
+- 若配置了 IBD 网关：
+  - `IBD_API_BASE_URL`、`IBD_API_KEY` 用于获取 IBD 的 RS Rating 与 RS 线；
+  - 第七条标准：RS Rating ≥ 70 且 RS 线近 6 周上行（优选 ≥ 90 和 13 周）。
+- 若未配置 IBD：
+  - 启用“RS 评级代理”（横截面百分位 1–99）。优先顺序：
+    1) `peers` 请求参数提供的股票池；
+    2) `SP500_SYMBOLS` 环境变量提供的标普500成分（需同时传 `pool=SP500` 或 `use_sp500_pool=1`）。
+  - 始终保留 RS 线用 SPY 为基准判断上行周数（兜底方案）。
+
+### 环境变量
+- `ALPHA_VANTAGE_API_BASE_URL`（可选）
+- `ALPHA_VANTAGE_API_KEY`（必需）
+- `IBD_API_BASE_URL`（可选，存在则启用 IBD 数据）
+- `IBD_API_KEY`（可选，存在则启用 IBD 数据）
+- `SP500_SYMBOLS`（可选，逗号分隔的标普500成分，用于 RS 评级代理）
+
+### GET 使用示例
+```
+# 直接分析（仅大盘与基本指标）
+/api/analysis?symbol=AAPL
+
+# 使用自定义 peers 计算 RS 评级代理（横截面百分位）
+/api/analysis?symbol=AAPL&peers=MSFT,GOOGL,NVDA,AMZN&rs_lookback_days=126
+
+# 使用标普500成分作为股票池（需配置 SP500_SYMBOLS）
+/api/analysis?symbol=AAPL&pool=SP500&pool_limit=50&rs_lookback_days=126
+```
 
 ## 使用说明
 

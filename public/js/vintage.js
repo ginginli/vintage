@@ -515,14 +515,14 @@ async function fetchCriteria(symbol) {
     if (!data.success) {
         throw new Error(data.error || '分析失败');
     }
-    return data.analysis.criteria;
+    return data.analysis;
 }
 
 function renderCriteria(criteria) {
     const list = document.getElementById('criteriaList');
     if (!list) return;
     list.innerHTML = '';
-    criteria.forEach(item => {
+    (criteria || []).forEach(item => {
         const li = document.createElement('li');
         li.className = 'criteria-item';
 
@@ -607,14 +607,17 @@ function renderCriteria(criteria) {
         }
 
         if (item.id === 7) {
-            // 标准7：RS值与上行周数
-            if (typeof detail.rsApprox === 'number') {
+            // 标准7：IBD RS Rating 与 RS 线上行周数
+            if (typeof detail.rsRating === 'number') {
+                addBox('RS Rating(IBD)', `${detail.rsRating}`);
+            } else if (typeof detail.rsApprox === 'number') {
+                // 回退显示
                 addBox('RS值(近似)', detail.rsApprox.toFixed(2));
             }
             if (typeof detail.rsTrendWeeks === 'number') {
                 addBox('RS线上行', `${detail.rsTrendWeeks} 周`);
             }
-            addNote('备注：RS线不应处于强烈的下行趋势。我喜欢看到RS线至少6周处于上行趋势，最好13周或更长。');
+            addNote('备注：目标 RS Rating≥70，优选≥90；RS线至少上行6周，优选13周+。');
         }
 
         if (extras.childElementCount > 0) {
@@ -623,6 +626,46 @@ function renderCriteria(criteria) {
 
         li.appendChild(container);
         list.appendChild(li);
+    });
+}
+
+function renderVcp(vcp) {
+    const summaryEl = document.getElementById('vcpSummary');
+    const metaEl = document.getElementById('vcpMeta');
+    const tableEl = document.getElementById('vcpTable');
+    if (!summaryEl || !metaEl || !tableEl) return;
+
+    if (!vcp) {
+        summaryEl.textContent = '—';
+        metaEl.innerHTML = '';
+        tableEl.querySelector('tbody').innerHTML = '';
+        return;
+    }
+
+    summaryEl.textContent = `VCP 判定：${vcp.isVCP ? 'YES' : 'NO'}（对称性：${(vcp.contractions||[]).length} 次）`;
+
+    function addBox(label, value) {
+        const box = document.createElement('div');
+        box.style.background = '#f8f9fa';
+        box.style.border = '1px solid #eee';
+        box.style.borderRadius = '6px';
+        box.style.padding = '6px 8px';
+        box.textContent = `${label}: ${value}`;
+        metaEl.appendChild(box);
+    }
+
+    metaEl.innerHTML = '';
+    addBox('基底总时长', `${vcp.baseBars || 0} bars`);
+    addBox('收缩次数', `${(vcp.contractions||[]).length}`);
+
+    const tbody = tableEl.querySelector('tbody');
+    tbody.innerHTML = '';
+    (vcp.contractions || []).forEach((c, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="padding:6px; border:1px solid #eee;">${idx+1}</td>`+
+                       `<td style="padding:6px; border:1px solid #eee;">${c.bars}</td>`+
+                       `<td style="padding:6px; border:1px solid #eee;">${(c.depthPct).toFixed(1)}%</td>`;
+        tbody.appendChild(tr);
     });
 }
 
@@ -765,14 +808,16 @@ window.analyzeStock = async function() {
 
         // 获取并渲染 8 条标准
         try {
-            const criteria = await fetchCriteria(symbol);
-            renderCriteria(criteria);
+            const analysis = await fetchCriteria(symbol);
+            renderCriteria(analysis.criteria || []);
+            renderVcp(analysis.vcp);
         } catch (e) {
             console.warn('获取8条标准失败：', e);
             const list = document.getElementById('criteriaList');
             if (list) {
                 list.innerHTML = '<li class="criteria-item"><span class="criteria-title">无法获取8条标准</span><span class="criteria-badge criteria-fail">错误</span></li>';
             }
+            renderVcp(null);
         }
 
     } catch (error) {
