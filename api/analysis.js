@@ -279,6 +279,44 @@ function analyzeStockData(stockData) {
 
     const vcp = analyzeVcp(stockData);
 
+    // 枢轴点分析：
+    // - 取最佳VCP子序列的最后一段收缩作为“右侧最紧”区域
+    // - 在该段收缩区间内取最高价作为枢轴上沿（可作为突破触发）
+    function analyzePivot(data, vcpResult) {
+        try {
+            if (!vcpResult || !vcpResult.best || !vcpResult.best.isVCP) return null;
+            const lookback = 252;
+            const window = data.slice(-lookback);
+            const startBar = vcpResult.contractions[vcpResult.best.start]?.startBar;
+            const endBar = vcpResult.contractions[vcpResult.best.end]?.endBar;
+            if (startBar == null || endBar == null) return null;
+            const seg = window.slice(startBar, endBar + 1);
+            if (!seg.length) return null;
+            let pivot = -Infinity, pivotDate = null;
+            for (const d of seg) {
+                if (Number.isFinite(d.high) && d.high > pivot) {
+                    pivot = d.high; pivotDate = d.date;
+                }
+            }
+            if (!Number.isFinite(pivot)) return null;
+            const buyZoneFrom = pivot;
+            const buyZoneTo = pivot * 1.03; // 允许最多追高3%
+            const lastClose = data[data.length - 1]?.close;
+            return {
+                pivot,
+                pivotDate,
+                range: { startDate: seg[0]?.date, endDate: seg[seg.length - 1]?.date },
+                buyZone: { from: buyZoneFrom, to: buyZoneTo, maxChasePct: 3 },
+                lastClose,
+                isAbovePivot: Number.isFinite(lastClose) ? lastClose >= pivot : null
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    const pivot = analyzePivot(stockData, vcp);
+
     return {
         indicators: {
             lastClose,
@@ -294,7 +332,8 @@ function analyzeStockData(stockData) {
         reasons,
         criteria,
             rs: { },
-        vcp
+        vcp,
+        pivot
     };
 }
 

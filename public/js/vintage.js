@@ -715,6 +715,34 @@ function renderVcp(vcp) {
     footprintEl.innerHTML = svg;
 }
 
+function renderPivot(pivot) {
+    const summary = document.getElementById('pivotSummary');
+    const meta = document.getElementById('pivotMeta');
+    if (!summary || !meta) return;
+    if (!pivot) {
+        summary.textContent = '—';
+        meta.innerHTML = '';
+        return;
+    }
+    summary.textContent = `Pivot：${pivot.pivot?.toFixed ? pivot.pivot.toFixed(2) : pivot.pivot}  (${pivot.isAbovePivot ? '价格已在枢轴上方' : '价格在枢轴下方'})`;
+    meta.innerHTML = '';
+    function box(label, value) {
+        const d = document.createElement('div');
+        d.style.background = '#f8f9fa';
+        d.style.border = '1px solid #eee';
+        d.style.borderRadius = '6px';
+        d.style.padding = '6px 8px';
+        d.textContent = `${label}: ${value}`;
+        meta.appendChild(d);
+    }
+    box('枢轴日期', pivot.pivotDate || '-');
+    box('区间', `${pivot.range?.startDate || ''} → ${pivot.range?.endDate || ''}`);
+    box('买入区间From', pivot.buyZone?.from?.toFixed ? pivot.buyZone.from.toFixed(2) : pivot.buyZone?.from);
+    box('买入区间To', pivot.buyZone?.to?.toFixed ? pivot.buyZone.to.toFixed(2) : pivot.buyZone?.to);
+    box('允许追高', `${pivot.buyZone?.maxChasePct || 0}%`);
+    if (pivot.lastClose != null) box('最新收盘', pivot.lastClose.toFixed ? pivot.lastClose.toFixed(2) : pivot.lastClose);
+}
+
 // 4. 接入现有 analyzeStock 流程
 window.analyzeStock = async function() {
     try {
@@ -857,6 +885,7 @@ window.analyzeStock = async function() {
             const analysis = await fetchCriteria(symbol);
             renderCriteria(analysis.criteria || []);
             renderVcp(analysis.vcp);
+            renderPivot(analysis.pivot);
         } catch (e) {
             console.warn('获取8条标准失败：', e);
             const list = document.getElementById('criteriaList');
@@ -864,6 +893,7 @@ window.analyzeStock = async function() {
                 list.innerHTML = '<li class="criteria-item"><span class="criteria-title">无法获取8条标准</span><span class="criteria-badge criteria-fail">错误</span></li>';
             }
             renderVcp(null);
+            renderPivot(null);
         }
 
     } catch (error) {
