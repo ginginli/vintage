@@ -724,6 +724,7 @@ function renderPivot(pivot) {
         meta.innerHTML = '';
         return;
     }
+    // 总结：枢轴价与位置状态
     summary.textContent = `Pivot：${pivot.pivot?.toFixed ? pivot.pivot.toFixed(2) : pivot.pivot}  (${pivot.isAbovePivot ? '价格已在枢轴上方' : '价格在枢轴下方'})`;
     meta.innerHTML = '';
     function box(label, value) {
@@ -735,12 +736,40 @@ function renderPivot(pivot) {
         d.textContent = `${label}: ${value}`;
         meta.appendChild(d);
     }
+    // 基本信息
     box('枢轴日期', pivot.pivotDate || '-');
     box('区间', `${pivot.range?.startDate || ''} → ${pivot.range?.endDate || ''}`);
     box('买入区间From', pivot.buyZone?.from?.toFixed ? pivot.buyZone.from.toFixed(2) : pivot.buyZone?.from);
     box('买入区间To', pivot.buyZone?.to?.toFixed ? pivot.buyZone.to.toFixed(2) : pivot.buyZone?.to);
     box('允许追高', `${pivot.buyZone?.maxChasePct || 0}%`);
     if (pivot.lastClose != null) box('最新收盘', pivot.lastClose.toFixed ? pivot.lastClose.toFixed(2) : pivot.lastClose);
+
+    // 量能评估：缩量与极低量日
+    if (pivot.volume) {
+        const v = pivot.volume;
+        const v10 = (v.volSMA10 != null && v.volSMA10.toLocaleString) ? v.volSMA10.toLocaleString() : v.volSMA10;
+        const v50 = (v.volSMA50 != null && v.volSMA50.toLocaleString) ? v.volSMA50.toLocaleString() : v.volSMA50;
+        box('10日均量', v10 ?? '-');
+        box('50日均量', v50 ?? '-');
+        box('缩量达标', v.dryOk === null ? '-' : (v.dryOk ? 'Yes' : 'No'));
+        box('极低量日(近10日)', v.extremeLowDays ?? '-');
+    }
+
+    // 紧致度评估：ATR/Close
+    if (pivot.tightness) {
+        const t = pivot.tightness;
+        const pct = (t.atrPct != null) ? `${(t.atrPct*100).toFixed(2)}%` : '-';
+        box('ATR/Close', pct);
+        box('紧致达标(≤3%)', t.tightOk === null ? '-' : (t.tightOk ? 'Yes' : 'No'));
+    }
+
+    // 突破放量建议阈值
+    if (pivot.breakout) {
+        const b = pivot.breakout;
+        const needed = (b.volNeeded != null && b.volNeeded.toLocaleString) ? b.volNeeded.toLocaleString() : b.volNeeded;
+        box('突破量倍率', `${b.volMult}x(10日均量)`);
+        box('建议最低突破量', needed ?? '-');
+    }
 }
 
 // 4. 接入现有 analyzeStock 流程

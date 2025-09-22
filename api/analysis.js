@@ -279,19 +279,29 @@ function analyzeStockData(stockData) {
 
     const vcp = analyzeVcp(stockData);
 
-    // 枢轴点分析：
-    // - 取最佳VCP子序列的最后一段收缩作为“右侧最紧”区域
-    // - 在该段收缩区间内取最高价作为枢轴上沿（可作为突破触发）
+    // 枢轴点分析（带注释）：
+    // - 思路：使用 VCP 的最佳右侧子序列，取其“最后一段收缩”作为最紧区域；
+    // - 在该区域内的最高价作为枢轴上沿（突破触发）；
+    // - 同时评估“缩量是否充分”和“末端是否足够紧”（ATR/close），以辅助判断枢轴质量。
     function analyzePivot(data, vcpResult) {
         try {
+            // 1) 必须先有一个有效的 VCP 最佳子序列
             if (!vcpResult || !vcpResult.best || !vcpResult.best.isVCP) return null;
+
+            // 2) 仅分析最近一年窗口，保证时效性
             const lookback = 252;
             const window = data.slice(-lookback);
+
+            // 3) 取最佳子序列的起止段索引，定位“最后一段收缩”的窗口范围
             const startBar = vcpResult.contractions[vcpResult.best.start]?.startBar;
             const endBar = vcpResult.contractions[vcpResult.best.end]?.endBar;
             if (startBar == null || endBar == null) return null;
+
+            // 4) 提取该区间数据（含日期/高低收/量）
             const seg = window.slice(startBar, endBar + 1);
             if (!seg.length) return null;
+
+            // 5) 在该段内寻找最高价，作为枢轴上沿；记录其日期
             let pivot = -Infinity, pivotDate = null;
             for (const d of seg) {
                 if (Number.isFinite(d.high) && d.high > pivot) {
@@ -299,16 +309,89 @@ function analyzeStockData(stockData) {
                 }
             }
             if (!Number.isFinite(pivot)) return null;
+
+            // 6) 计算买入区间：枢轴至枢轴+3%（可参数化）
             const buyZoneFrom = pivot;
-            const buyZoneTo = pivot * 1.03; // 允许最多追高3%
+            const buyZoneTo = pivot * 1.03;
+
+            // 7) 读取最新收盘价，用于显示“是否已在枢轴上方”
             const lastClose = data[data.length - 1]?.close;
+
+            // 8) 构建量能与紧致度判据（启发式）
+            //    - 近10日均量 vs 近50日均量（截止到该段结束处）
+            //    - 极低量日计数：段内最后 W=10 天内，volume ≤ volSMA50 * 0.35 的天数
+            //    - 简易 ATR（14）：TR = max(high-low, |high-prevClose|, |low-prevClose|)
+            //      取段末14天均值除以收盘作为 atrPct，衡量“是否足够紧”。
+            const endIdx = endBar;                                  // 段尾在 window 内的索引
+            const volsUpToEnd = window.slice(0, endIdx + 1).map(d => d.volume);
+            const closesUpToEnd = window.slice(0, endIdx + 1).map(d => d.close);
+            const highsUpToEnd = window.slice(0, endIdx + 1).map(d => d.high);
+            const lowsUpToEnd  = window.slice(0, endIdx + 1).map(d => d.low);
+
+            // 均量函数
+            const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+            const volSMA10 = avg(volsUpToEnd.slice(-10));           // 近10日均量
+            const volSMA50 = avg(volsUpToEnd.slice(-50));           // 近50日均量
+            const dryFactor = 0.7;                                  // 缩量阈值：10日 < 50日 * 0.7
+            const dryOk = Number.isFinite(volSMA10) && Number.isFinite(volSMA50)
+                ? volSMA10 < volSMA50 * dryFactor : null;
+
+            // 极低量日统计（窗口 W=10）
+            const W = 10;
+            const extremeFactor = 0.35;                             // 极低量：≤ 50日均量 * 0.35
+            let extremeLowDays = 0;
+            const tail = seg.slice(-W);
+            if (Number.isFinite(volSMA50)) {
+                for (const d of tail) {
+                    if (Number.isFinite(d.volume) && d.volume <= volSMA50 * extremeFactor) extremeLowDays++;
+                }
+            }
+
+            // 简易 ATR(14) 及紧致度（atrPct）
+            const atrLen = 14;
+            let trs = [];
+            for (let i = Math.max(1, closesUpToEnd.length - atrLen); i < closesUpToEnd.length; i++) {
+                const h = highsUpToEnd[i], l = lowsUpToEnd[i], pc = closesUpToEnd[i - 1];
+                const tr = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+                trs.push(tr);
+            }
+            const atr = avg(trs);
+            const closeEnd = closesUpToEnd[closesUpToEnd.length - 1];
+            const atrPct = (Number.isFinite(atr) && Number.isFinite(closeEnd) && closeEnd > 0)
+                ? atr / closeEnd : null;
+            const maxAtrPct = 0.03;                                 // 紧致阈值：ATR/Close ≤ 3%
+            const tightOk = (atrPct != null) ? atrPct <= maxAtrPct : null;
+
+            // 建议的突破放量阈值（用于前端提示，不做强判定）
+            const breakoutVolMult = 1.8;                            // 建议：≥ 10日均量 * 1.8
+            const breakoutVolNeeded = (Number.isFinite(volSMA10)) ? volSMA10 * breakoutVolMult : null;
+
             return {
-                pivot,
-                pivotDate,
-                range: { startDate: seg[0]?.date, endDate: seg[seg.length - 1]?.date },
-                buyZone: { from: buyZoneFrom, to: buyZoneTo, maxChasePct: 3 },
-                lastClose,
-                isAbovePivot: Number.isFinite(lastClose) ? lastClose >= pivot : null
+                pivot,                                              // 枢轴价（上沿）
+                pivotDate,                                          // 枢轴对应日期
+                range: { startDate: seg[0]?.date, endDate: seg[seg.length - 1]?.date }, // 区间
+                buyZone: { from: buyZoneFrom, to: buyZoneTo, maxChasePct: 3 },          // 买入建议区
+                lastClose,                                          // 最新收盘
+                isAbovePivot: Number.isFinite(lastClose) ? lastClose >= pivot : null,   // 是否在枢轴上方
+                // 量能与紧致度评估（用于验证“好枢轴”）
+                volume: {
+                    volSMA10,
+                    volSMA50,
+                    dryOk,
+                    extremeLowDays,
+                    extremeFactor,
+                    dryFactor
+                },
+                tightness: {
+                    atrPct,
+                    maxAtrPct,
+                    tightOk
+                },
+                breakout: {
+                    volMult: breakoutVolMult,
+                    volNeeded: breakoutVolNeeded
+                }
             };
         } catch {
             return null;
