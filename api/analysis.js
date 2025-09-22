@@ -250,7 +250,30 @@ function analyzeStockData(stockData) {
                 const lastOK = contractions[contractions.length-1].depthPct <= maxLastRetr;
                 isVCP = ok && lastOK;
             }
-            return { isVCP, baseBars, contractions };
+
+            // 选取“最佳连续VCP子序列”：从最新收缩向前找满足递减与末端阈值的最长片段
+            let best = { isVCP: false, start: null, end: null, depths: [], widthsBars: [], totalBars: 0, count: 0 };
+            for (let end = contractions.length - 1; end >= 0; end--) {
+                let lastOk = contractions[end]?.depthPct <= maxLastRetr;
+                if (!lastOk) continue;
+                let start = end;
+                while (start - 1 >= 0) {
+                    const newer = contractions[start].depthPct/100;
+                    const older = contractions[start - 1].depthPct/100;
+                    if (newer <= older * decRatio) start--; else break;
+                }
+                const count = end - start + 1;
+                if (count >= minContractions) {
+                    const slice = contractions.slice(start, end + 1);
+                    const totalBarsSel = slice.reduce((s, c) => s + (c.bars || 0), 0);
+                    const depths = slice.map(c => c.depthPct);
+                    const widthsBars = slice.map(c => c.bars);
+                    best = { isVCP: true, start, end, depths, widthsBars, totalBars: totalBarsSel, count };
+                    break; // 取最靠近右侧的一段
+                }
+            }
+
+            return { isVCP, baseBars, contractions, best };
         } catch { return { isVCP: false, baseBars: 0, contractions: [] }; }
     }
 

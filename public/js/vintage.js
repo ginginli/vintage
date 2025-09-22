@@ -633,6 +633,7 @@ function renderVcp(vcp) {
     const summaryEl = document.getElementById('vcpSummary');
     const metaEl = document.getElementById('vcpMeta');
     const tableEl = document.getElementById('vcpTable');
+    const footprintEl = document.getElementById('vcpFootprint');
     if (!summaryEl || !metaEl || !tableEl) return;
 
     if (!vcp) {
@@ -677,6 +678,41 @@ function renderVcp(vcp) {
                        `<td style=\"padding:6px; border:1px solid #eee;\">${(c.lowPrice ?? '').toString()}</td>`;
         tbody.appendChild(tr);
     });
+
+    // 绘制简易 VCP Footprint（基于 best 子序列）
+    if (!footprintEl) return;
+    footprintEl.innerHTML = '';
+    const best = vcp.best;
+    if (!best || !best.isVCP) return;
+
+    const depths = best.depths;         // 示例： [27, 17, 8]
+    const widths = best.widthsBars;     // bars 宽度数组
+    if (!depths || !depths.length) return;
+
+    const w = 520, h = 180, pad = 20;
+    const maxDepth = Math.max(...depths);
+    const maxWidth = Math.max(...widths);
+    const colGap = 40; // 列之间的水平间隔
+
+    function yForDepth(d) { return pad + (h - 2*pad) * (1 - d / (maxDepth || 1)); }
+    function xForIndex(i) { return pad + i * colGap; }
+
+    let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+    // 画深度刻度（左侧）
+    svg += `<text x="${pad}" y="${pad - 4}" fill="#666" font-size="12">depth</text>`;
+
+    for (let i = 0; i < depths.length; i++) {
+        const d = depths[i];
+        const y = yForDepth(d);
+        const x = xForIndex(i) + 180; // 将列整体右移以留白
+        const lineLen = 80 * (widths[i] / (maxWidth || 1)); // 用bars宽度比例体现在横线长度
+        svg += `<line x1="${x}" y1="${y}" x2="${x + lineLen}" y2="${y}" stroke="#333" stroke-width="3" stroke-dasharray="8,6"/>`;
+        svg += `<text x="${x + lineLen + 8}" y="${y + 4}" fill="#333" font-size="12">${d.toFixed(1)}%</text>`;
+    }
+    // 底部 width 标签
+    svg += `<text x="${w/2 - 18}" y="${h - 4}" fill="#666" font-size="12">width</text>`;
+    svg += `</svg>`;
+    footprintEl.innerHTML = svg;
 }
 
 // 4. 接入现有 analyzeStock 流程
