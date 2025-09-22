@@ -657,14 +657,19 @@ function renderVcp(vcp) {
     metaEl.innerHTML = '';
     addBox('基底总时长', `${vcp.baseBars || 0} bars`);
     addBox('收缩次数', `${(vcp.contractions||[]).length}`);
+    addBox('bars 说明', 'bars = K线根数（按当前周期）');
 
     const tbody = tableEl.querySelector('tbody');
     tbody.innerHTML = '';
     (vcp.contractions || []).forEach((c, idx) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td style="padding:6px; border:1px solid #eee;">${idx+1}</td>`+
-                       `<td style="padding:6px; border:1px solid #eee;">${c.bars}</td>`+
-                       `<td style="padding:6px; border:1px solid #eee;">${(c.depthPct).toFixed(1)}%</td>`;
+                       `<td style=\"padding:6px; border:1px solid #eee;\">${c.startDate || ''}</td>`+
+                       `<td style=\"padding:6px; border:1px solid #eee;\">${c.endDate || ''}</td>`+
+                       `<td style=\"padding:6px; border:1px solid #eee;\">${c.bars}</td>`+
+                       `<td style=\"padding:6px; border:1px solid #eee;\">${(c.depthPct).toFixed(1)}%</td>`+
+                       `<td style=\"padding:6px; border:1px solid #eee;\">${(c.highPrice ?? '').toString()}</td>`+
+                       `<td style=\"padding:6px; border:1px solid #eee;\">${(c.lowPrice ?? '').toString()}</td>`;
         tbody.appendChild(tr);
     });
 }

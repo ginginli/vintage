@@ -214,6 +214,7 @@ function analyzeStockData(stockData) {
             const left = 3, right = 3;
             const highs = window.map(d => d.high);
             const lows = window.map(d => d.low);
+            const dates = window.map(d => d.date);
             const hiIdx = [], hiVal = [], loIdx = [], loVal = [];
             for (let i = left; i < window.length - right; i++) {
                 let isH = true, isL = true;
@@ -230,7 +231,16 @@ function analyzeStockData(stockData) {
             }
             const legs = [];
             for (let k = 0; k < piv.length - 1; k++) if (piv[k].isHigh && !piv[k+1].isHigh) legs.push({ si: piv[k].idx, ei: piv[k+1].idx, sv: piv[k].val, ev: piv[k+1].val });
-            const contractions = legs.map(l => ({ startBar: l.si, endBar: l.ei, bars: Math.max(1, l.ei - l.si), depthPct: Math.max(0, (l.sv - l.ev) / (l.sv || 1) * 100) }));
+            const contractions = legs.map(l => ({
+                startBar: l.si,
+                endBar: l.ei,
+                startDate: dates[l.si],
+                endDate: dates[l.ei],
+                bars: Math.max(1, l.ei - l.si),
+                depthPct: Math.max(0, (l.sv - l.ev) / (l.sv || 1) * 100),
+                highPrice: l.sv,
+                lowPrice: l.ev
+            }));
             const baseBars = contractions.length ? (contractions[contractions.length-1].endBar - contractions[0].startBar) : 0;
             const minContractions = 3, decRatio = 0.7, maxLastRetr = 15;
             let isVCP = false;
