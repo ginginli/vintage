@@ -205,6 +205,47 @@ function analyzeStockData(stockData) {
         }
     ];
 
+    // VCP（三要素）分析：最近一年，启发式识别收缩递减
+    function analyzeVcp(data) {
+        try {
+            const lookback = 252;
+            const window = data.slice(-lookback);
+            if (window.length < 60) return { isVCP: false, baseBars: 0, contractions: [] };
+            const left = 3, right = 3;
+            const highs = window.map(d => d.high);
+            const lows = window.map(d => d.low);
+            const hiIdx = [], hiVal = [], loIdx = [], loVal = [];
+            for (let i = left; i < window.length - right; i++) {
+                let isH = true, isL = true;
+                for (let k = 1; k <= left; k++) { if (highs[i] <= highs[i-k]) isH = false; if (lows[i] >= lows[i-k]) isL = false; }
+                for (let k = 1; k <= right; k++) { if (highs[i] < highs[i+k]) isH = false; if (lows[i] > lows[i+k]) isL = false; }
+                if (isH) { hiIdx.push(i); hiVal.push(highs[i]); }
+                if (isL) { loIdx.push(i); loVal.push(lows[i]); }
+            }
+            let i = 0, j = 0; const piv = [];
+            while (i < hiIdx.length || j < loIdx.length) {
+                const takeH = j >= loIdx.length || (i < hiIdx.length && hiIdx[i] <= loIdx[j]);
+                if (takeH) { piv.push({ idx: hiIdx[i], val: hiVal[i], isHigh: true }); i++; }
+                else { piv.push({ idx: loIdx[j], val: loVal[j], isHigh: false }); j++; }
+            }
+            const legs = [];
+            for (let k = 0; k < piv.length - 1; k++) if (piv[k].isHigh && !piv[k+1].isHigh) legs.push({ si: piv[k].idx, ei: piv[k+1].idx, sv: piv[k].val, ev: piv[k+1].val });
+            const contractions = legs.map(l => ({ startBar: l.si, endBar: l.ei, bars: Math.max(1, l.ei - l.si), depthPct: Math.max(0, (l.sv - l.ev) / (l.sv || 1) * 100) }));
+            const baseBars = contractions.length ? (contractions[contractions.length-1].endBar - contractions[0].startBar) : 0;
+            const minContractions = 3, decRatio = 0.7, maxLastRetr = 15;
+            let isVCP = false;
+            if (contractions.length >= minContractions) {
+                let ok = true;
+                for (let k = 0; k < contractions.length - 1; k++) if (!((contractions[k+1].depthPct/100) <= (contractions[k].depthPct/100) * decRatio)) { ok = false; break; }
+                const lastOK = contractions[contractions.length-1].depthPct <= maxLastRetr;
+                isVCP = ok && lastOK;
+            }
+            return { isVCP, baseBars, contractions };
+        } catch { return { isVCP: false, baseBars: 0, contractions: [] }; }
+    }
+
+    const vcp = analyzeVcp(stockData);
+
     return {
         indicators: {
             lastClose,
@@ -219,7 +260,8 @@ function analyzeStockData(stockData) {
         signal,
         reasons,
         criteria,
-            rs: { }
+            rs: { },
+        vcp
     };
 }
 

@@ -984,6 +984,28 @@
                 </div>
             </div>
 
+            <!-- VCP 分析结果（放在 8 条标准之后） -->
+            <h3 class="standalone-title">VCP 分析结果</h3>
+            <div class="analysis-section">
+                <div class="analysis-card">
+                    <div class="card-title">VCP 三要素与判定</div>
+                    <div id="vcpSummary" style="margin-bottom:10px; font-weight:600; color:#333;">—</div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:8px; margin-bottom:10px;" id="vcpMeta"></div>
+                    <div>
+                        <table id="vcpTable" style="width:100%; border-collapse:collapse; font-size:13px;">
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th style="text-align:left; padding:6px; border:1px solid #eee;">序号</th>
+                                    <th style="text-align:left; padding:6px; border:1px solid #eee;">时长(bars)</th>
+                                    <th style="text-align:left; padding:6px; border:1px solid #eee;">回撤(%)</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- 市场特征判断标题 -->
             <h3 class="standalone-title">市场特征判断</h3>
             
