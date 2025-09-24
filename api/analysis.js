@@ -400,6 +400,564 @@ function analyzeStockData(stockData) {
 
     const pivot = analyzePivot(stockData, vcp);
 
+    // Cheat Setup 分析（基于杯形右侧提前买点的启发式识别）
+    function analyzeCheatSetup(data) {
+        try {
+            if (!Array.isArray(data) || data.length < 220) return null; // 至少约1年数据
+
+            const closes = data.map(d => d.close);
+            const highs = data.map(d => d.high);
+            const lows  = data.map(d => d.low);
+
+            // 计算 200MA 及其趋势
+            const ma200Series = calculateMovingAverage(closes, 200);
+            const lastMa200 = ma200Series[ma200Series.length - 1];
+            const lastClose = closes[closes.length - 1];
+            const ma200UpDays = daysTrendingUp(ma200Series);
+            const ma200SlopeUp = ma200UpDays >= 21; // 至少1个月向上
+            const above200ma = Number.isFinite(lastClose) && Number.isFinite(lastMa200) && lastClose > lastMa200;
+
+            // 在最近 225 根K线内寻找一个“杯”：先左峰 P，再低点 L，再右侧高点 R
+            const lookback = 225; // ≈45周
+            const startIdx = Math.max(0, data.length - lookback);
+            const window = data.slice(startIdx);
+            const wHighs = window.map(d => d.high);
+            const wLows  = window.map(d => d.low);
+
+            // 1) 找到最近低点 L（避开极端尾部噪声，使用过去 20..(lookback-5) 的最小值）
+            let lIdx = -1, lVal = Infinity;
+            for (let i = 10; i < wLows.length - 5; i++) {
+                if (wLows[i] < lVal) { lVal = wLows[i]; lIdx = i; }
+            }
+            if (lIdx < 0 || !Number.isFinite(lVal)) return null;
+
+            // 2) 在 L 左侧寻找左峰 P（最大高点）
+            let pIdx = -1, pVal = -Infinity;
+            for (let i = 0; i < lIdx; i++) {
+                if (wHighs[i] > pVal) { pVal = wHighs[i]; pIdx = i; }
+            }
+            if (pIdx < 0 || !Number.isFinite(pVal) || pVal <= 0) return null;
+
+            // 3) 在 L 右侧寻找右侧高点 R（恢复到接近左峰）
+            let rIdx = -1, rVal = -Infinity;
+            for (let i = lIdx + 1; i < wHighs.length; i++) {
+                if (wHighs[i] > rVal) { rVal = wHighs[i]; rIdx = i; }
+            }
+            if (rIdx < 0 || !Number.isFinite(rVal)) return null;
+
+            // 杯深、时长
+            const depthPct = Math.max(0, (pVal - lVal) / pVal) * 100; // %
+            const baseBars = Math.max(1, rIdx - pIdx);
+            const durationWeeks = Math.round(baseBars / 5);
+
+            // 资格区间：深度 15%–50%（>60% 视为过深），时长 3–45 周
+            const depthOk = depthPct >= 15 && depthPct <= 50;
+            const depthTooDeep = depthPct > 60;
+            const durationOk = durationWeeks >= 3 && durationWeeks <= 45;
+
+            // 先前涨幅：在 P 之前 3–36 个月范围内（≈63–756 根）寻找更早低点，计算 P 相对涨幅
+            const leftGlobalIdx = startIdx + pIdx;
+            const runupLookbackMin = 63, runupLookbackMax = 756;
+            const runupStart = Math.max(0, leftGlobalIdx - runupLookbackMax);
+            const runupEnd   = Math.max(0, leftGlobalIdx - runupLookbackMin);
+            let priorLow = Infinity;
+            for (let i = runupStart; i <= runupEnd; i++) {
+                priorLow = Math.min(priorLow, data[i]?.low ?? Infinity);
+            }
+            const priorRunupPct = Number.isFinite(priorLow) && priorLow > 0 ? ((pVal / priorLow) - 1) * 100 : null;
+            const priorRunupOk = priorRunupPct != null && priorRunupPct >= 25; // ≥25%
+
+            // 上三分之一/中三分之一阈值（用于识别提前买点区域）
+            const midLine = lVal + (pVal - lVal) * 0.5;
+            const upperThird = lVal + (pVal - lVal) * (2/3);
+
+            // 识别一个“cheat 提前买点”：最近 10–15 根内的短期枢轴高点，要求位于中三分之一及以上，但低于左峰
+            const plateauLen = 12; // 平台长度用于检测宽度与紧致度
+            const tail = window.slice(-Math.max(10, plateauLen));
+            let cheatPivot = -Infinity;
+            let cheatPivotDate = null;
+            for (const d of tail) {
+                if (!Number.isFinite(d.high)) continue;
+                if (d.high > cheatPivot && d.high < pVal && d.high >= midLine) {
+                    cheatPivot = d.high;
+                    cheatPivotDate = d.date;
+                }
+            }
+            if (!Number.isFinite(cheatPivot)) {
+                // 回退：使用最近 10 日最高价，若 ≥ 中位线
+                const last10 = window.slice(-10);
+                const cand = Math.max(...last10.map(d => d.high));
+                if (Number.isFinite(cand) && cand >= midLine && cand < pVal) {
+                    cheatPivot = cand;
+                    cheatPivotDate = last10.find(d => d.high === cand)?.date || null;
+                }
+            }
+
+            // 标准柄买点通常接近左峰（或右侧最后一个重要高点）
+            const standardPivot = pVal;
+
+            // 四步法阶段识别
+            // 1) Downtrend: 存在 P→L 的下跌段且深度>0，且长周期上升（近200MA上行并有一段历史高于200MA）
+            const downtrend = (pIdx >= 0 && lIdx > pIdx && depthPct > 0) && (ma200SlopeUp);
+
+            // 2) Uptrend: L→R 的回升比例在 1/3–1/2 附近
+            let recoupRatio = null;
+            if (Number.isFinite(rVal) && Number.isFinite(lVal) && Number.isFinite(pVal) && (pVal - lVal) > 0) {
+                recoupRatio = (rVal - lVal) / (pVal - lVal);
+            }
+            const uptrend = recoupRatio != null && recoupRatio >= 0.3 && recoupRatio <= 0.7;
+
+            // 3) Pause: 最近平台宽度在 5%–10%，且末端缩量与价格紧致
+            const plateauHigh = Math.max(...tail.map(d => d.high));
+            const plateauLow  = Math.min(...tail.map(d => d.low));
+            const plateauWidthPct = Number.isFinite(plateauHigh) && plateauHigh > 0 ? ((plateauHigh - plateauLow) / plateauHigh) * 100 : null;
+            const plateauWidthOk = plateauWidthPct != null && plateauWidthPct >= 5 && plateauWidthPct <= 10;
+
+            // 末端缩量与紧致（沿用简易规则）：10日均量 < 50日均量×0.7；ATR/Close ≤ 3%
+            const volsUpToNow = window.map(d => d.volume);
+            const closesUpToNow = window.map(d => d.close);
+            const highsUpToNow = window.map(d => d.high);
+            const lowsUpToNow  = window.map(d => d.low);
+            const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+            const volSMA10_end = avg(volsUpToNow.slice(-10));
+            const volSMA50_end = avg(volsUpToNow.slice(-50));
+            const dryOk_end = (volSMA10_end != null && volSMA50_end != null) ? (volSMA10_end < volSMA50_end * 0.7) : null;
+            // ATR/Close 以平台末端近14天
+            const atrLen2 = 14;
+            let trs2 = [];
+            for (let i = Math.max(1, closesUpToNow.length - atrLen2); i < closesUpToNow.length; i++) {
+                const h = highsUpToNow[i], l = lowsUpToNow[i], pc = closesUpToNow[i - 1];
+                trs2.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+            }
+            const atr2 = avg(trs2);
+            const lastClose2 = closesUpToNow[closesUpToNow.length - 1];
+            const atrPct2 = (atr2 != null && lastClose2 != null && lastClose2 > 0) ? atr2 / lastClose2 : null;
+            const tightOk_end = (atrPct2 != null) ? atrPct2 <= 0.03 : null;
+
+            // Shakeout：平台内最低价是否短暂跌破平台前一个短期低点
+            const preTail = window.slice(-Math.max(plateauLen * 2, 24), -plateauLen);
+            const preLow = preTail.length ? Math.min(...preTail.map(d => d.low)) : null;
+            const shakeout = (preLow != null && plateauLow != null) ? (plateauLow < preLow) : false;
+
+            const pause = Boolean(plateauWidthOk && (dryOk_end !== false) && (tightOk_end !== false));
+
+            // 4) Breakout：最新价上穿平台高点，且量能达到建议阈值（≥10日均量×1.8）
+            const lastPx = lastClose;
+            const breakoutNow = Number.isFinite(lastPx) && Number.isFinite(plateauHigh) ? (lastPx > plateauHigh) : false;
+            const breakoutVolMult2 = 1.8;
+            const breakoutVolNeeded2 = (volSMA10_end != null) ? volSMA10_end * breakoutVolMult2 : null;
+            const lastVol = data[data.length - 1]?.volume;
+            const breakoutVolumeOk = (breakoutVolNeeded2 != null && Number.isFinite(lastVol)) ? (lastVol >= breakoutVolNeeded2) : null;
+            const breakout = Boolean(breakoutNow && (breakoutVolumeOk !== false));
+
+            // 总体资格
+            const qualifies = Boolean(
+                depthOk && !depthTooDeep && durationOk && priorRunupOk && above200ma && ma200SlopeUp && Number.isFinite(cheatPivot)
+            );
+
+            const reasons = [];
+            if (!depthOk) reasons.push(`杯深 ${depthPct.toFixed(1)}% 不在 15%–50% 范围`);
+            if (depthTooDeep) reasons.push(`杯深 ${depthPct.toFixed(1)}% 过深（>60%）`);
+            if (!durationOk) reasons.push(`基底时长 ${durationWeeks} 周不在 3–45 周范围`);
+            if (!priorRunupOk) reasons.push(`先前涨幅不足（${(priorRunupPct ?? 0).toFixed(1)}% < 25%）`);
+            if (!above200ma) reasons.push('现价未站上 200MA');
+            if (!ma200SlopeUp) reasons.push('200MA 未上行至少 1 个月');
+            if (!Number.isFinite(cheatPivot)) reasons.push('未识别到合理的提前买点枢轴');
+
+            return {
+                qualifies,
+                reasons,
+                thresholds: {
+                    depthPct: { min: 15, max: 50, tooDeep: 60 },
+                    durationWeeks: { min: 3, max: 45 },
+                    priorRunupPctMin: 25,
+                    ma200UpDaysMin: 21,
+                    plateauWidthPct: { min: 5, max: 10 },
+                    atrPctMax: 0.03,
+                    dryFactor: 0.7,
+                    breakoutVolMult: 1.8
+                },
+                window: {
+                    startDate: window[0]?.date,
+                    endDate: window[window.length - 1]?.date
+                },
+                cup: {
+                    leftPeak: { price: pVal, index: pIdx, date: window[pIdx]?.date },
+                    lowPoint: { price: lVal, index: lIdx, date: window[lIdx]?.date },
+                    rightHigh: { price: rVal, index: rIdx, date: window[rIdx]?.date },
+                    depthPct,
+                    baseBars,
+                    durationWeeks,
+                    midLine,
+                    upperThird
+                },
+                trend: {
+                    above200ma,
+                    ma200SlopeUp,
+                    ma200UpDays
+                },
+                prior: {
+                    priorRunupPct,
+                    lookbackDays: { min: runupLookbackMin, max: runupLookbackMax }
+                },
+                buyPoints: {
+                    cheatPivot: { price: Number.isFinite(cheatPivot) ? cheatPivot : null, date: cheatPivotDate },
+                    standardPivot: { price: standardPivot, date: window[pIdx]?.date }
+                },
+                plateau: {
+                    lengthBars: tail.length,
+                    high: plateauHigh,
+                    low: plateauLow,
+                    widthPct: plateauWidthPct,
+                    widthOk: plateauWidthOk,
+                    shakeout
+                },
+                endMetrics: {
+                    volSMA10: volSMA10_end,
+                    volSMA50: volSMA50_end,
+                    dryOk: dryOk_end,
+                    atrPct: atrPct2,
+                    tightOk: tightOk_end,
+                    breakoutVolMult: breakoutVolMult2,
+                    breakoutVolNeeded: breakoutVolNeeded2,
+                    lastVolume: lastVol
+                },
+                steps: {
+                    downtrend,
+                    uptrend: Boolean(uptrend),
+                    pause,
+                    breakout
+                }
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    const cheat = analyzeCheatSetup(stockData);
+
+    // Low Cheat 分析：在杯的下三分之一形成的平台与提前买点
+    function analyzeLowCheat(data) {
+        try {
+            if (!Array.isArray(data) || data.length < 220) return null;
+            const closes = data.map(d => d.close);
+            const highs = data.map(d => d.high);
+            const lows  = data.map(d => d.low);
+
+            const ma200Series = calculateMovingAverage(closes, 200);
+            const lastMa200 = ma200Series[ma200Series.length - 1];
+            const lastClose = closes[closes.length - 1];
+            const ma200UpDays = daysTrendingUp(ma200Series);
+            const ma200SlopeUp = ma200UpDays >= 21;
+            const above200ma = Number.isFinite(lastClose) && Number.isFinite(lastMa200) && lastClose > lastMa200;
+
+            const lookback = 225;
+            const startIdx = Math.max(0, data.length - lookback);
+            const window = data.slice(startIdx);
+            const wHighs = window.map(d => d.high);
+            const wLows  = window.map(d => d.low);
+
+            // 找杯的 L / P / R
+            let lIdx = -1, lVal = Infinity;
+            for (let i = 10; i < wLows.length - 5; i++) {
+                if (wLows[i] < lVal) { lVal = wLows[i]; lIdx = i; }
+            }
+            if (lIdx < 0 || !Number.isFinite(lVal)) return null;
+            let pIdx = -1, pVal = -Infinity;
+            for (let i = 0; i < lIdx; i++) {
+                if (wHighs[i] > pVal) { pVal = wHighs[i]; pIdx = i; }
+            }
+            if (pIdx < 0 || !Number.isFinite(pVal) || pVal <= 0) return null;
+            let rIdx = -1, rVal = -Infinity;
+            for (let i = lIdx + 1; i < wHighs.length; i++) {
+                if (wHighs[i] > rVal) { rVal = wHighs[i]; rIdx = i; }
+            }
+            if (rIdx < 0 || !Number.isFinite(rVal)) return null;
+
+            const depthPct = Math.max(0, (pVal - lVal) / pVal) * 100;
+            const baseBars = Math.max(1, rIdx - pIdx);
+            const durationWeeks = Math.round(baseBars / 5);
+
+            const depthOk = depthPct >= 15 && depthPct <= 50;
+            const depthTooDeep = depthPct > 60;
+            const durationOk = durationWeeks >= 3 && durationWeeks <= 45;
+
+            // 先前涨幅
+            const leftGlobalIdx = startIdx + pIdx;
+            const runupLookbackMin = 63, runupLookbackMax = 756;
+            const runupStart = Math.max(0, leftGlobalIdx - runupLookbackMax);
+            const runupEnd   = Math.max(0, leftGlobalIdx - runupLookbackMin);
+            let priorLow = Infinity;
+            for (let i = runupStart; i <= runupEnd; i++) {
+                priorLow = Math.min(priorLow, data[i]?.low ?? Infinity);
+            }
+            const priorRunupPct = Number.isFinite(priorLow) && priorLow > 0 ? ((pVal / priorLow) - 1) * 100 : null;
+            const priorRunupOk = priorRunupPct != null && priorRunupPct >= 25;
+
+            const lowerThird = lVal + (pVal - lVal) * (1/3);
+            const midLine = lVal + (pVal - lVal) * 0.5;
+
+            // 平台检测：末段窗口
+            const plateauLen = 15;
+            const tail = window.slice(-plateauLen);
+            const plateauHigh = Math.max(...tail.map(d => d.high));
+            const plateauLow  = Math.min(...tail.map(d => d.low));
+            const plateauWidthPct = Number.isFinite(plateauHigh) && plateauHigh > 0 ? ((plateauHigh - plateauLow) / plateauHigh) * 100 : null;
+            const plateauWidthOk = plateauWidthPct != null && plateauWidthPct >= 5 && plateauWidthPct <= 10;
+
+            // Low Cheat 枢轴：平台最高点，但位置需要落在“下三分之一”区域（≤ lowerThird）
+            let lowCheatPivot = -Infinity, lowCheatDate = null;
+            for (const d of tail) {
+                if (!Number.isFinite(d.high)) continue;
+                if (d.high > lowCheatPivot && d.high <= lowerThird) {
+                    lowCheatPivot = d.high; lowCheatDate = d.date;
+                }
+            }
+            if (!Number.isFinite(lowCheatPivot)) {
+                // 回退：使用平台内最高价，若 ≤ 下三分之一阈值
+                const cand = plateauHigh;
+                if (Number.isFinite(cand) && cand <= lowerThird) {
+                    lowCheatPivot = cand;
+                    lowCheatDate = tail.find(d => d.high === cand)?.date || null;
+                }
+            }
+
+            // 缩量与紧致（末端）
+            const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+            const vols = window.map(d => d.volume);
+            const closesUpToNow = window.map(d => d.close);
+            const highsUpToNow = window.map(d => d.high);
+            const lowsUpToNow  = window.map(d => d.low);
+            const volSMA10 = avg(vols.slice(-10));
+            const volSMA50 = avg(vols.slice(-50));
+            const dryOk = (volSMA10 != null && volSMA50 != null) ? (volSMA10 < volSMA50 * 0.7) : null;
+            const atrLen = 14; let trs = [];
+            for (let i = Math.max(1, closesUpToNow.length - atrLen); i < closesUpToNow.length; i++) {
+                const h = highsUpToNow[i], l = lowsUpToNow[i], pc = closesUpToNow[i - 1];
+                trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+            }
+            const atr = avg(trs);
+            const closeEnd = closesUpToNow[closesUpToNow.length - 1];
+            const atrPct = (atr != null && closeEnd != null && closeEnd > 0) ? atr / closeEnd : null;
+            const tightOk = (atrPct != null) ? atrPct <= 0.03 : null;
+
+            // 四步法阶段
+            const downtrend = (pIdx >= 0 && lIdx > pIdx && depthPct > 0) && (ma200SlopeUp);
+            let recoupRatio = null;
+            if (Number.isFinite(rVal) && Number.isFinite(lVal) && Number.isFinite(pVal) && (pVal - lVal) > 0) {
+                recoupRatio = (rVal - lVal) / (pVal - lVal);
+            }
+            const uptrend = recoupRatio != null && recoupRatio >= 0.3 && recoupRatio <= 0.7;
+            // Pause 需要宽度达标 + 缩量/紧致不为否
+            const pause = Boolean(plateauWidthOk && (dryOk !== false) && (tightOk !== false));
+            // Breakout：最新价上穿平台高点
+            const breakout = Number.isFinite(lastClose) && Number.isFinite(plateauHigh) ? (lastClose > plateauHigh) : false;
+
+            const qualifies = Boolean(depthOk && !depthTooDeep && durationOk && priorRunupOk && above200ma && ma200SlopeUp && Number.isFinite(lowCheatPivot));
+            const reasons = [];
+            if (!depthOk) reasons.push(`杯深 ${depthPct.toFixed(1)}% 不在 15%–50% 范围`);
+            if (depthTooDeep) reasons.push(`杯深 ${depthPct.toFixed(1)}% 过深（>60%）`);
+            if (!durationOk) reasons.push(`基底时长 ${durationWeeks} 周不在 3–45 周范围`);
+            if (!priorRunupOk) reasons.push(`先前涨幅不足（${(priorRunupPct ?? 0).toFixed(1)}% < 25%）`);
+            if (!above200ma) reasons.push('现价未站上 200MA');
+            if (!ma200SlopeUp) reasons.push('200MA 未上行至少 1 个月');
+            if (!Number.isFinite(lowCheatPivot)) reasons.push('未识别到下三分之一的提前买点');
+
+            return {
+                qualifies,
+                reasons,
+                thresholds: {
+                    depthPct: { min: 15, max: 50, tooDeep: 60 },
+                    durationWeeks: { min: 3, max: 45 },
+                    priorRunupPctMin: 25,
+                    ma200UpDaysMin: 21,
+                    plateauWidthPct: { min: 5, max: 10 },
+                    atrPctMax: 0.03,
+                    dryFactor: 0.7,
+                    region: 'lowerThird'
+                },
+                window: { startDate: window[0]?.date, endDate: window[window.length - 1]?.date },
+                cup: {
+                    leftPeak: { price: pVal, index: pIdx, date: window[pIdx]?.date },
+                    lowPoint: { price: lVal, index: lIdx, date: window[lIdx]?.date },
+                    rightHigh: { price: rVal, index: rIdx, date: window[rIdx]?.date },
+                    depthPct,
+                    baseBars,
+                    durationWeeks,
+                    lowerThird,
+                    midLine
+                },
+                buyPoints: {
+                    lowCheatPivot: { price: Number.isFinite(lowCheatPivot) ? lowCheatPivot : null, date: lowCheatDate },
+                    referenceHigh: { price: plateauHigh, date: tail.find(d => d.high === plateauHigh)?.date || null }
+                },
+                plateau: {
+                    lengthBars: tail.length,
+                    high: plateauHigh,
+                    low: plateauLow,
+                    widthPct: plateauWidthPct,
+                    widthOk: plateauWidthOk
+                },
+                endMetrics: { volSMA10, volSMA50, dryOk, atrPct, tightOk },
+                steps: { downtrend, uptrend: Boolean(uptrend), pause, breakout }
+            };
+        } catch { return null; }
+    }
+
+    const cheatLow = analyzeLowCheat(stockData);
+
+    // Power Play（强力突破）分析
+    function analyzePowerPlay(data) {
+        try {
+            if (!Array.isArray(data) || data.length < 120) return null;
+            const closes = data.map(d => d.close);
+            const volumes = data.map(d => d.volume);
+            const dates = data.map(d => d.date);
+
+            // 阈值设定
+            const thresholds = {
+                explosivePctMin: 100,              // ≥100%
+                explosiveLookbackDays: 40,         // 8周≈40交易日
+                explosiveVolMult: 2.0,             // 爆发行情量能 ≥ 前50日均量 × 2
+                baseMinDays: 15,                    // 横盘 3周≈15日
+                baseMaxDays: 30,                    // 横盘 6周≈30日（允许 10–12天提前）
+                baseMinAltDays: 10,                 // 最短10–12天
+                correctionMaxPct: 20,               // 基底最大回撤 20%（低价股可 25%）
+                correctionMaxPctLowPrice: 25,       // 低价股放宽
+                lowPriceThreshold: 20,              // 低价股阈值（USD）
+                noTightNeededPct: 10,               // 若基底≤10%，不强制收紧
+                tightAtrPctMax: 0.03,               // 紧致度 ATR/Close ≤ 3%
+                preQuietAtrPctMax: 0.03,            // 爆发前“安静”阈值（Stage 1 近似）
+                preQuietDays: 20                    // 爆发前观察期
+            };
+
+            // 1) 寻找最近的“爆发段”：在近 80 天内扫描任意 40 天窗口，收益≥100%
+            const scanDays = 80;
+            const start = Math.max(0, data.length - scanDays);
+            let best = null;
+            for (let i = start; i <= data.length - thresholds.explosiveLookbackDays; i++) {
+                const j = i + thresholds.explosiveLookbackDays - 1;
+                const first = closes[i];
+                const last = closes[j];
+                if (!Number.isFinite(first) || !Number.isFinite(last) || first <= 0) continue;
+                const pct = (last / first - 1) * 100;
+                if (pct >= thresholds.explosivePctMin) {
+                    // 计算该窗口内的量能放大倍数（窗口均量 vs 前50日均量）
+                    const winVolAvg = volumes.slice(i, j + 1).reduce((a, b) => a + b, 0) / (j - i + 1);
+                    const pre50Start = Math.max(0, i - 50);
+                    const pre50 = volumes.slice(pre50Start, i);
+                    const pre50Avg = pre50.length ? pre50.reduce((a, b) => a + b, 0) / pre50.length : null;
+                    const volMult = (pre50Avg && pre50Avg > 0) ? (winVolAvg / pre50Avg) : null;
+                    // 爆发前是否“安静”：前20天 ATR/Close ≤ 阈值
+                    const preEnd = Math.max(1, i);
+                    const preStart = Math.max(1, preEnd - thresholds.preQuietDays);
+                    let trs = [];
+                    for (let k = preStart; k < preEnd; k++) {
+                        const h = data[k].high, l = data[k].low, pc = data[k - 1].close;
+                        trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+                    }
+                    const preAtr = trs.length ? trs.reduce((a, b) => a + b, 0) / trs.length : null;
+                    const preClose = data[preEnd - 1].close;
+                    const preAtrPct = (preAtr != null && preClose > 0) ? preAtr / preClose : null;
+                    const preQuiet = (preAtrPct != null) ? (preAtrPct <= thresholds.preQuietAtrPctMax) : null;
+
+                    best = {
+                        startIdx: i, endIdx: j, returnPct: pct, volMult, preQuiet,
+                        startDate: dates[i], endDate: dates[j]
+                    };
+                    break; // 取最近一次
+                }
+            }
+            if (!best) return null;
+
+            // 2) 爆发后的“横盘基底”：从 endIdx 之后找 10–30 天窗口，最大回撤≤20%(或≤25%低价股)
+            const postStart = best.endIdx + 1;
+            const maxLook = Math.min(data.length - postStart, 40);
+            if (maxLook <= 0) return null;
+            let base = null;
+            for (let len of [15, 20, 25, 30, 12, 10]) { // 优先 15–30，其次 12/10
+                if (len > maxLook) continue;
+                const seg = data.slice(postStart, postStart + len);
+                if (!seg.length) continue;
+                const hi = Math.max(...seg.map(d => d.high));
+                const lo = Math.min(...seg.map(d => d.low));
+                if (!Number.isFinite(hi) || hi <= 0 || !Number.isFinite(lo)) continue;
+                const corrPct = ((hi - lo) / hi) * 100;
+                const lastPx = seg[seg.length - 1].close;
+                const isLowPrice = Number.isFinite(lastPx) ? (lastPx < thresholds.lowPriceThreshold) : false;
+                const corrMax = isLowPrice ? thresholds.correctionMaxPctLowPrice : thresholds.correctionMaxPct;
+                const corrOk = corrPct <= corrMax;
+                // 紧致度（可选）：若 corrPct > 10%，则要求 ATR/Close ≤ 3%
+                let tightOk = true;
+                if (corrPct > thresholds.noTightNeededPct) {
+                    // 近14日 ATR/Close
+                    const closes2 = seg.map(d => d.close);
+                    let trs2 = [];
+                    for (let k = 1; k < closes2.length; k++) {
+                        const h = seg[k].high, l = seg[k].low, pc = seg[k - 1].close;
+                        trs2.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+                    }
+                    const atr = trs2.length ? trs2.reduce((a, b) => a + b, 0) / trs2.length : null;
+                    const c = closes2[closes2.length - 1];
+                    const atrPct = (atr != null && c > 0) ? atr / c : null;
+                    tightOk = (atrPct != null) ? (atrPct <= thresholds.tightAtrPctMax) : true;
+                }
+                if (corrOk && tightOk) {
+                    base = {
+                        startIdx: postStart,
+                        endIdx: postStart + len - 1,
+                        startDate: data[postStart].date,
+                        endDate: data[postStart + len - 1].date,
+                        days: len,
+                        correctionPct: corrPct,
+                        isLowPrice,
+                        tightOk
+                    };
+                    break;
+                }
+            }
+            if (!base) return null;
+
+            // 3) 触发：上穿基底高点
+            const baseHigh = Math.max(...data.slice(base.startIdx, base.endIdx + 1).map(d => d.high));
+            const lastClose = data[data.length - 1]?.close;
+            const breakout = Number.isFinite(lastClose) && Number.isFinite(baseHigh) ? (lastClose > baseHigh) : false;
+
+            const qualifies = Boolean(
+                (best.returnPct >= thresholds.explosivePctMin) &&
+                (best.volMult == null || best.volMult >= thresholds.explosiveVolMult) &&
+                (base.days >= thresholds.baseMinAltDays && base.days <= thresholds.baseMaxDays) &&
+                (base.correctionPct <= (base.isLowPrice ? thresholds.correctionMaxPctLowPrice : thresholds.correctionMaxPct))
+            );
+
+            const reasons = [];
+            if (best.volMult != null && best.volMult < thresholds.explosiveVolMult) reasons.push(`爆发量能不足（${best.volMult.toFixed(2)}x < ${thresholds.explosiveVolMult}x）`);
+            if (!(base.days >= thresholds.baseMinAltDays)) reasons.push(`横盘时长不足（${base.days} < ${thresholds.baseMinAltDays} 日）`);
+            if (base.days > thresholds.baseMaxDays) reasons.push(`横盘时间过长（${base.days} > ${thresholds.baseMaxDays} 日）`);
+            const corrLimit = base.isLowPrice ? thresholds.correctionMaxPctLowPrice : thresholds.correctionMaxPct;
+            if (base.correctionPct > corrLimit) reasons.push(`基底回撤 ${base.correctionPct.toFixed(1)}% 超限（>${corrLimit}%）`);
+
+            return {
+                qualifies,
+                reasons,
+                thresholds,
+                explosive: {
+                    startDate: best.startDate, endDate: best.endDate, returnPct: best.returnPct, volMult: best.volMult, preQuiet: best.preQuiet
+                },
+                base: {
+                    startDate: base.startDate, endDate: base.endDate, days: base.days, correctionPct: base.correctionPct, isLowPrice: base.isLowPrice, tightOk: base.tightOk, high: baseHigh
+                },
+                trigger: {
+                    breakout,
+                    lastClose,
+                    baseHigh
+                }
+            };
+        } catch { return null; }
+    }
+
+    const powerPlay = analyzePowerPlay(stockData);
+
     return {
         indicators: {
             lastClose,
@@ -416,7 +974,10 @@ function analyzeStockData(stockData) {
         criteria,
             rs: { },
         vcp,
-        pivot
+        pivot,
+        cheat,
+        cheatLow,
+        powerPlay
     };
 }
 

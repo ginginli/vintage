@@ -503,6 +503,209 @@ class StockAnalyzer {
     }
 }
 
+function renderPowerPlay(pp) {
+    const summary = document.getElementById('ppSummary');
+    const meta = document.getElementById('ppMeta');
+    const reasonsEl = document.getElementById('ppReasons');
+    const thresholdsEl = document.getElementById('ppThresholds');
+    const checklist = document.getElementById('ppChecklist');
+    if (!summary || !meta || !reasonsEl) return;
+    if (!pp) {
+        summary.textContent = '—';
+        meta.innerHTML = '';
+        reasonsEl.innerHTML = '';
+        if (thresholdsEl) thresholdsEl.innerHTML = '';
+        if (checklist) checklist.innerHTML = '';
+        return;
+    }
+
+    summary.textContent = `资格判定：${pp.qualifies ? 'YES' : 'NO'}  ｜ 爆发涨幅：${pp.explosive?.returnPct?.toFixed ? pp.explosive.returnPct.toFixed(1) : pp.explosive?.returnPct}%`;
+
+    function box(label, value) {
+        const d = document.createElement('div');
+        d.style.background = '#f8f9fa';
+        d.style.border = '1px solid #eee';
+        d.style.borderRadius = '6px';
+        d.style.padding = '6px 8px';
+        d.textContent = `${label}: ${value}`;
+        meta.appendChild(d);
+    }
+    meta.innerHTML = '';
+    if (pp.explosive) {
+        box('爆发区间', `${pp.explosive.startDate || ''} → ${pp.explosive.endDate || ''}`);
+        if (pp.explosive.volMult != null) box('量能倍数', `${pp.explosive.volMult.toFixed ? pp.explosive.volMult.toFixed(2) : pp.explosive.volMult}x`);
+        if (pp.explosive.preQuiet != null) box('爆发前安静', pp.explosive.preQuiet ? 'Yes' : 'No');
+    }
+    if (pp.base) {
+        box('横盘时长', `${pp.base.days} 日`);
+        box('回撤', `${pp.base.correctionPct?.toFixed ? pp.base.correctionPct.toFixed(1) : pp.base.correctionPct}%`);
+        box('低价股', pp.base.isLowPrice ? 'Yes' : 'No');
+        box('紧致达标', pp.base.tightOk ? 'Yes' : 'No');
+    }
+    if (pp.trigger) {
+        box('突破', pp.trigger.breakout ? 'Yes' : 'No');
+        if (pp.trigger.baseHigh != null) box('基底高点', pp.trigger.baseHigh.toFixed ? pp.trigger.baseHigh.toFixed(2) : pp.trigger.baseHigh);
+        if (pp.trigger.lastClose != null) box('最新收盘', pp.trigger.lastClose.toFixed ? pp.trigger.lastClose.toFixed(2) : pp.trigger.lastClose);
+    }
+
+    reasonsEl.innerHTML = '';
+    const reasons = Array.isArray(pp.reasons) ? pp.reasons : [];
+    if (reasons.length) {
+        const ul = document.createElement('ul'); ul.style.margin = '0'; ul.style.paddingLeft = '18px';
+        reasons.forEach(r => { const li = document.createElement('li'); li.textContent = r; ul.appendChild(li); });
+        reasonsEl.appendChild(ul);
+    }
+
+    if (thresholdsEl) {
+        thresholdsEl.innerHTML = '';
+        const th = pp.thresholds || {};
+        function tbox(label, value) {
+            const d = document.createElement('div'); d.style.background = '#f8f9fa'; d.style.border = '1px solid #eee'; d.style.borderRadius = '6px'; d.style.padding = '6px 8px'; d.textContent = `${label}: ${value}`; thresholdsEl.appendChild(d); }
+        if (th.explosivePctMin != null) tbox('爆发涨幅≥', `${th.explosivePctMin}%（${th.explosiveLookbackDays}日）`);
+        if (th.explosiveVolMult != null) tbox('爆发量能', `≥ 前50日均量 × ${th.explosiveVolMult}`);
+        if (th.baseMinAltDays != null && th.baseMaxDays != null) tbox('横盘时长', `${th.baseMinAltDays}–${th.baseMaxDays} 日`);
+        if (th.correctionMaxPct != null && th.correctionMaxPctLowPrice != null) tbox('回撤上限', `≤${th.correctionMaxPct}%（低价股≤${th.correctionMaxPctLowPrice}%）`);
+        if (th.noTightNeededPct != null) tbox('无需额外收紧阈值', `回撤≤${th.noTightNeededPct}%`);
+        if (th.tightAtrPctMax != null) tbox('紧致度 ATR/Close ≤', `${(th.tightAtrPctMax * 100).toFixed(1)}%`);
+        if (th.lowPriceThreshold != null) tbox('低价股阈值', `$${th.lowPriceThreshold}`);
+    }
+
+    if (checklist) {
+        checklist.innerHTML = '';
+        function addCheck(title, pass, extras) {
+            const li = document.createElement('li'); li.className = 'criteria-item';
+            const head = document.createElement('div'); head.style.display = 'flex'; head.style.justifyContent = 'space-between'; head.style.alignItems = 'center';
+            const titleEl = document.createElement('span'); titleEl.className = 'criteria-title'; titleEl.textContent = title;
+            const badge = document.createElement('span'); badge.className = `criteria-badge ${pass ? 'criteria-pass' : 'criteria-fail'}`; badge.textContent = pass ? '达标' : '未达标';
+            head.appendChild(titleEl); head.appendChild(badge); li.appendChild(head);
+            if (extras && extras.length) {
+                const ex = document.createElement('div'); ex.style.marginTop = '8px'; ex.style.display = 'grid'; ex.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))'; ex.style.gap = '8px';
+                extras.forEach(([label, value]) => { const b = document.createElement('div'); b.style.background = '#f8f9fa'; b.style.border = '1px solid #eee'; b.style.borderRadius = '6px'; b.style.padding = '6px 8px'; b.textContent = `${label}: ${value}`; ex.appendChild(b); });
+                li.appendChild(ex);
+            }
+            checklist.appendChild(li);
+        }
+        const th = pp.thresholds || {};
+        addCheck('8周爆发涨幅（≥100%）', pp.explosive?.returnPct != null && pp.explosive.returnPct >= (th.explosivePctMin ?? 100), [[ '涨幅(%)', pp.explosive?.returnPct != null ? pp.explosive.returnPct.toFixed(1) + '%' : '-' ]]);
+        const volPass = (pp.explosive?.volMult == null) || (pp.explosive?.volMult >= (th.explosiveVolMult ?? 2));
+        addCheck('爆发量能（≥前50日×倍率）', volPass, [[ '量能倍数', pp.explosive?.volMult != null ? (pp.explosive.volMult.toFixed ? pp.explosive.volMult.toFixed(2) : pp.explosive.volMult) + 'x' : '-' ]]);
+        const days = pp.base?.days; const daysPass = days != null && days >= (th.baseMinAltDays ?? 10) && days <= (th.baseMaxDays ?? 30);
+        addCheck('横盘时长（10–30日，优选15–30）', daysPass, [[ '时长(日)', days ?? '-' ]]);
+        const corr = pp.base?.correctionPct; const limit = pp.base?.isLowPrice ? (th.correctionMaxPctLowPrice ?? 25) : (th.correctionMaxPct ?? 20);
+        addCheck('回撤上限（≤20%，低价股≤25%）', corr != null && corr <= limit, [[ '回撤(%)', corr != null ? corr.toFixed(1) + '%' : '-' ], [ '上限(%)', limit ]]);
+        // 若回撤>10%，需紧致
+        const noTight = (corr != null && corr <= (th.noTightNeededPct ?? 10));
+        addCheck('紧致度（ATR/Close ≤ 3% 或回撤≤10%）', noTight || !!pp.base?.tightOk, [[ 'ATR/Close', (pp.base?.tightOk != null ? (pp.base.tightOk ? '<=3% (OK)' : '>3% (不达标)') : '-') ]]);
+        addCheck('触发：上穿基底高点', !!pp.trigger?.breakout, [[ '基底高点', pp.trigger?.baseHigh?.toFixed ? pp.trigger.baseHigh.toFixed(2) : (pp.trigger?.baseHigh ?? '-') ], [ '最新收盘', pp.trigger?.lastClose?.toFixed ? pp.trigger.lastClose.toFixed(2) : (pp.trigger?.lastClose ?? '-') ]]);
+    }
+}
+function renderLowCheat(cheat) {
+    const summary = document.getElementById('lowCheatSummary');
+    const meta = document.getElementById('lowCheatMeta');
+    const reasonsEl = document.getElementById('lowCheatReasons');
+    const stepsEl = document.getElementById('lowCheatSteps');
+    const thresholdsEl = document.getElementById('lowCheatThresholds');
+    const checklist = document.getElementById('lowCheatChecklist');
+    if (!summary || !meta || !reasonsEl) return;
+    if (!cheat) {
+        summary.textContent = '—';
+        meta.innerHTML = '';
+        reasonsEl.innerHTML = '';
+        if (stepsEl) stepsEl.innerHTML = '';
+        if (thresholdsEl) thresholdsEl.innerHTML = '';
+        if (checklist) checklist.innerHTML = '';
+        return;
+    }
+
+    summary.textContent = `资格判定：${cheat.qualifies ? 'YES' : 'NO'}  ｜ Low Cheat：${cheat.buyPoints?.lowCheatPivot?.price?.toFixed ? cheat.buyPoints.lowCheatPivot.price.toFixed(2) : (cheat.buyPoints?.lowCheatPivot?.price ?? '-')}`;
+
+    function box(label, value) {
+        const d = document.createElement('div');
+        d.style.background = '#f8f9fa';
+        d.style.border = '1px solid #eee';
+        d.style.borderRadius = '6px';
+        d.style.padding = '6px 8px';
+        d.textContent = `${label}: ${value}`;
+        meta.appendChild(d);
+    }
+    meta.innerHTML = '';
+    if (cheat.window) box('窗口', `${cheat.window.startDate || ''} → ${cheat.window.endDate || ''}`);
+    if (cheat.cup) {
+        box('杯深', `${cheat.cup.depthPct?.toFixed ? cheat.cup.depthPct.toFixed(1) : cheat.cup.depthPct}%`);
+        box('时长', `${cheat.cup.durationWeeks ?? '-'} 周`);
+        box('下三分之一阈值', `${cheat.cup.lowerThird?.toFixed ? cheat.cup.lowerThird.toFixed(2) : (cheat.cup.lowerThird ?? '-')}`);
+        if (cheat.buyPoints?.lowCheatPivot?.price != null) {
+            box('Low Cheat', cheat.buyPoints.lowCheatPivot.price.toFixed ? cheat.buyPoints.lowCheatPivot.price.toFixed(2) : cheat.buyPoints.lowCheatPivot.price);
+        }
+    }
+
+    reasonsEl.innerHTML = '';
+    const reasons = Array.isArray(cheat.reasons) ? cheat.reasons : [];
+    if (reasons.length) {
+        const ul = document.createElement('ul');
+        ul.style.margin = '0';
+        ul.style.paddingLeft = '18px';
+        reasons.forEach(r => { const li = document.createElement('li'); li.textContent = r; ul.appendChild(li); });
+        reasonsEl.appendChild(ul);
+    }
+
+    // 阈值参数
+    if (thresholdsEl) {
+        thresholdsEl.innerHTML = '';
+        const th = cheat.thresholds || {};
+        function tbox(label, value) {
+            const d = document.createElement('div');
+            d.style.background = '#f8f9fa'; d.style.border = '1px solid #eee'; d.style.borderRadius = '6px'; d.style.padding = '6px 8px';
+            d.textContent = `${label}: ${value}`; thresholdsEl.appendChild(d);
+        }
+        if (th.depthPct) tbox('杯深范围', `${th.depthPct.min}%–${th.depthPct.max}%（过深>${th.depthPct.tooDeep}%）`);
+        if (th.durationWeeks) tbox('时长范围', `${th.durationWeeks.min}–${th.durationWeeks.max} 周`);
+        if (th.priorRunupPctMin != null) tbox('先前涨幅≥', `${th.priorRunupPctMin}%`);
+        if (th.ma200UpDaysMin != null) tbox('200MA上行≥', `${th.ma200UpDaysMin} 天`);
+        if (th.plateauWidthPct) tbox('平台宽度', `${th.plateauWidthPct.min}%–${th.plateauWidthPct.max}%`);
+        if (th.atrPctMax != null) tbox('ATR/Close ≤', `${(th.atrPctMax * 100).toFixed(1)}%`);
+        if (th.dryFactor != null) tbox('缩量阈值', `10日均量 < 50日均量 × ${th.dryFactor}`);
+        if (th.region) tbox('区域', th.region);
+    }
+
+    // 清单
+    if (checklist) {
+        checklist.innerHTML = '';
+        function addCheck(title, pass, extras) {
+            const li = document.createElement('li'); li.className = 'criteria-item';
+            const head = document.createElement('div'); head.style.display = 'flex'; head.style.justifyContent = 'space-between'; head.style.alignItems = 'center';
+            const titleEl = document.createElement('span'); titleEl.className = 'criteria-title'; titleEl.textContent = title;
+            const badge = document.createElement('span'); badge.className = `criteria-badge ${pass ? 'criteria-pass' : 'criteria-fail'}`; badge.textContent = pass ? '达标' : '未达标';
+            head.appendChild(titleEl); head.appendChild(badge); li.appendChild(head);
+            if (extras && extras.length) {
+                const ex = document.createElement('div'); ex.style.marginTop = '8px'; ex.style.display = 'grid'; ex.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))'; ex.style.gap = '8px';
+                extras.forEach(([label, value]) => { const b = document.createElement('div'); b.style.background = '#f8f9fa'; b.style.border = '1px solid #eee'; b.style.borderRadius = '6px'; b.style.padding = '6px 8px'; b.textContent = `${label}: ${value}`; ex.appendChild(b); });
+                li.appendChild(ex);
+            }
+            checklist.appendChild(li);
+        }
+        const depth = cheat.cup?.depthPct; addCheck('杯深（15%–50%）', depth != null && depth >= 15 && depth <= 50, [[ '杯深(%)', depth != null ? depth.toFixed(1) + '%' : '-' ]]);
+        const dur = cheat.cup?.durationWeeks; addCheck('基底时长（3–45周）', dur != null && dur >= 3 && dur <= 45, [[ '时长(周)', dur ?? '-' ]]);
+        const prior = cheat.prior?.priorRunupPct; addCheck('先前涨幅（≥25%）', prior != null && prior >= 25, [[ '先前涨幅(%)', prior != null ? prior.toFixed(1) + '%' : '-' ]]);
+        const above200 = null; // Low Cheat 允许更早启动，这里不强制展示 above200，若需要可接入：cheat.trend?.above200ma
+        addCheck('位置（≤下三分之一）', (cheat.buyPoints?.lowCheatPivot?.price != null && cheat.cup?.lowerThird != null) ? (cheat.buyPoints.lowCheatPivot.price <= cheat.cup.lowerThird) : false, [
+            ['Low Cheat', cheat.buyPoints?.lowCheatPivot?.price?.toFixed ? cheat.buyPoints.lowCheatPivot.price.toFixed(2) : (cheat.buyPoints?.lowCheatPivot?.price ?? '-')],
+            ['下三分之一阈值', cheat.cup?.lowerThird?.toFixed ? cheat.cup.lowerThird.toFixed(2) : (cheat.cup?.lowerThird ?? '-')]
+        ]);
+        const widthPct = cheat.plateau?.widthPct; addCheck('平台宽度（5%–10%）', widthPct != null && widthPct >= 5 && widthPct <= 10, [[ '平台宽度(%)', widthPct != null ? widthPct.toFixed(2) + '%' : '-' ]]);
+    }
+
+    // 阶段
+    if (stepsEl) {
+        stepsEl.innerHTML = '';
+        function step(name, pass) { const d = document.createElement('div'); d.style.background = pass ? '#e8f5e9' : '#f5f5f5'; d.style.border = `1px solid ${pass ? '#c8e6c9' : '#eee'}`; d.style.borderRadius = '6px'; d.style.padding = '8px 10px'; d.style.fontWeight = '600'; d.style.color = pass ? '#1b5e20' : '#666'; d.textContent = `${name}：${pass ? '完成/满足' : '未满足'}`; stepsEl.appendChild(d); }
+        const s = cheat.steps || {};
+        step('Downtrend', !!s.downtrend);
+        step('Uptrend', !!s.uptrend);
+        step('Pause (5–10%)', !!s.pause);
+        step('Breakout', !!s.breakout);
+    }
+}
 // 3. 新增：调用后端 /api/analysis 获取 8 条标准
 async function fetchCriteria(symbol) {
     const api = new StockAPI();
@@ -772,6 +975,223 @@ function renderPivot(pivot) {
     }
 }
 
+function renderCheat(cheat) {
+    const summary = document.getElementById('cheatSummary');
+    const meta = document.getElementById('cheatMeta');
+    const reasonsEl = document.getElementById('cheatReasons');
+    const stepsEl = document.getElementById('cheatSteps');
+    const thresholdsEl = document.getElementById('cheatThresholds');
+    if (!summary || !meta || !reasonsEl) return;
+    if (!cheat) {
+        summary.textContent = '—';
+        meta.innerHTML = '';
+        reasonsEl.innerHTML = '';
+        if (stepsEl) stepsEl.innerHTML = '';
+        if (thresholdsEl) thresholdsEl.innerHTML = '';
+        return;
+    }
+
+    summary.textContent = `资格判定：${cheat.qualifies ? 'YES' : 'NO'}  ｜ 提前买点：${cheat.buyPoints?.cheatPivot?.price?.toFixed ? cheat.buyPoints.cheatPivot.price.toFixed(2) : (cheat.buyPoints?.cheatPivot?.price ?? '-')}`;
+
+    function box(label, value) {
+        const d = document.createElement('div');
+        d.style.background = '#f8f9fa';
+        d.style.border = '1px solid #eee';
+        d.style.borderRadius = '6px';
+        d.style.padding = '6px 8px';
+        d.textContent = `${label}: ${value}`;
+        meta.appendChild(d);
+    }
+
+    meta.innerHTML = '';
+    // 时间窗口与趋势
+    if (cheat.window) {
+        box('窗口', `${cheat.window.startDate || ''} → ${cheat.window.endDate || ''}`);
+    }
+    if (cheat.trend) {
+        box('站上200MA', cheat.trend.above200ma ? 'Yes' : 'No');
+        box('200MA上行天数', `${cheat.trend.ma200UpDays ?? '-'}`);
+    }
+    // 杯属性
+    if (cheat.cup) {
+        box('杯深', `${cheat.cup.depthPct?.toFixed ? cheat.cup.depthPct.toFixed(1) : cheat.cup.depthPct}%`);
+        box('基底时长', `${cheat.cup.durationWeeks ?? '-'} 周`);
+        box('左峰', cheat.cup.leftPeak?.price?.toFixed ? cheat.cup.leftPeak.price.toFixed(2) : (cheat.cup.leftPeak?.price ?? '-'));
+        box('低点', cheat.cup.lowPoint?.price?.toFixed ? cheat.cup.lowPoint.price.toFixed(2) : (cheat.cup.lowPoint?.price ?? '-'));
+    }
+    // 先前涨幅
+    if (cheat.prior) {
+        box('先前涨幅', `${cheat.prior.priorRunupPct?.toFixed ? cheat.prior.priorRunupPct.toFixed(1) : cheat.prior.priorRunupPct}%`);
+    }
+    // 买点
+    if (cheat.buyPoints) {
+        const cp = cheat.buyPoints.cheatPivot;
+        const sp = cheat.buyPoints.standardPivot;
+        box('Cheat Pivot', cp?.price?.toFixed ? cp.price.toFixed(2) : (cp?.price ?? '-'));
+        box('标准Pivot(杯左峰)', sp?.price?.toFixed ? sp.price.toFixed(2) : (sp?.price ?? '-'));
+    }
+
+    // 不合格原因
+    reasonsEl.innerHTML = '';
+    const reasons = Array.isArray(cheat.reasons) ? cheat.reasons : [];
+    if (reasons.length) {
+        const ul = document.createElement('ul');
+        ul.style.margin = '0';
+        ul.style.paddingLeft = '18px';
+        reasons.forEach(r => {
+            const li = document.createElement('li');
+            li.textContent = r;
+            ul.appendChild(li);
+        });
+        reasonsEl.appendChild(ul);
+    }
+
+    // 阈值判定清单
+    const checklist = document.getElementById('cheatChecklist');
+    if (checklist) {
+        checklist.innerHTML = '';
+
+        function addCheck(title, pass, extraBoxes) {
+            const li = document.createElement('li');
+            li.className = 'criteria-item';
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
+            const spanTitle = document.createElement('span');
+            spanTitle.className = 'criteria-title';
+            spanTitle.textContent = title;
+            const badge = document.createElement('span');
+            badge.className = `criteria-badge ${pass ? 'criteria-pass' : 'criteria-fail'}`;
+            badge.textContent = pass ? '达标' : '未达标';
+            header.appendChild(spanTitle);
+            header.appendChild(badge);
+            li.appendChild(header);
+
+            if (extraBoxes && extraBoxes.length) {
+                const extras = document.createElement('div');
+                extras.style.marginTop = '8px';
+                extras.style.display = 'grid';
+                extras.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
+                extras.style.gap = '8px';
+                extraBoxes.forEach(([label, value]) => {
+                    const box = document.createElement('div');
+                    box.style.background = '#f8f9fa';
+                    box.style.border = '1px solid #eee';
+                    box.style.borderRadius = '6px';
+                    box.style.padding = '6px 8px';
+                    box.textContent = `${label}: ${value}`;
+                    extras.appendChild(box);
+                });
+                li.appendChild(extras);
+            }
+            checklist.appendChild(li);
+        }
+
+        // 1) 杯深 15–50%，>60% 判为过深
+        const depth = cheat.cup?.depthPct;
+        const depthPass = depth != null && depth >= 15 && depth <= 50;
+        addCheck('杯深（15%–50%，>60% 风险）', depthPass, [
+            ['杯深(%)', depth != null ? depth.toFixed(1) + '%' : '-']
+        ]);
+
+        // 2) 基底时长 3–45 周
+        const dur = cheat.cup?.durationWeeks;
+        const durPass = dur != null && dur >= 3 && dur <= 45;
+        addCheck('基底时长（3–45周）', durPass, [
+            ['时长(周)', dur ?? '-']
+        ]);
+
+        // 3) 先前涨幅 ≥25%
+        const prior = cheat.prior?.priorRunupPct;
+        const priorPass = prior != null && prior >= 25;
+        addCheck('先前涨幅（≥25%）', priorPass, [
+            ['先前涨幅(%)', prior != null ? prior.toFixed(1) + '%' : '-']
+        ]);
+
+        // 4) 200MA 向上且站上
+        const above200 = !!cheat.trend?.above200ma;
+        const maUpDays = cheat.trend?.ma200UpDays ?? null;
+        const maSlopePass = maUpDays != null && maUpDays >= 21;
+        addCheck('价格在200MA上方', above200, []);
+        addCheck('200MA 向上（≥21天）', maSlopePass, [
+            ['200MA上行天数', maUpDays ?? '-']
+        ]);
+
+        // 5) 提前买点位置（位于杯中三分之一及以上）
+        const cp = cheat.buyPoints?.cheatPivot?.price;
+        const mid = cheat.cup?.midLine;
+        const upperOk = (cp != null && mid != null) ? (cp >= mid) : false;
+        addCheck('提前买点位置（≥杯中位线）', upperOk, [
+            ['Cheat Pivot', cp != null && cp.toFixed ? cp.toFixed(2) : (cp ?? '-')],
+            ['中位线', mid != null && mid.toFixed ? mid.toFixed(2) : (mid ?? '-')]
+        ]);
+    }
+
+    // 四步法阶段渲染
+    if (stepsEl) {
+        stepsEl.innerHTML = '';
+        function stepBox(name, pass) {
+            const d = document.createElement('div');
+            d.style.background = pass ? '#e8f5e9' : '#f5f5f5';
+            d.style.border = `1px solid ${pass ? '#c8e6c9' : '#eee'}`;
+            d.style.borderRadius = '6px';
+            d.style.padding = '8px 10px';
+            d.style.fontWeight = '600';
+            d.style.color = pass ? '#1b5e20' : '#666';
+            d.textContent = `${name}：${pass ? '完成/满足' : '未满足'}`;
+            stepsEl.appendChild(d);
+        }
+        const s = cheat.steps || {};
+        stepBox('Downtrend', !!s.downtrend);
+        stepBox('Uptrend', !!s.uptrend);
+        // Pause补充显示平台宽度、缩量、紧致
+        const pausePass = !!s.pause;
+        stepBox('Pause (5–10%)', pausePass);
+        if (pausePass) {
+            const info = document.createElement('div');
+            info.style.gridColumn = '1 / -1';
+            info.style.background = '#fff';
+            info.style.border = '1px dashed #ddd';
+            info.style.borderRadius = '6px';
+            info.style.padding = '8px 10px';
+            info.style.fontSize = '12px';
+            info.style.color = '#333';
+            const widthPct = cheat.plateau?.widthPct != null ? `${cheat.plateau.widthPct.toFixed(2)}%` : '-';
+            const dry = cheat.endMetrics?.dryOk === null ? '-' : (cheat.endMetrics?.dryOk ? 'Yes' : 'No');
+            const tight = cheat.endMetrics?.tightOk === null ? '-' : (cheat.endMetrics?.tightOk ? 'Yes' : 'No');
+            const shake = cheat.plateau?.shakeout ? 'Yes' : 'No';
+            info.textContent = `平台宽度: ${widthPct} ｜ 缩量: ${dry} ｜ 紧致: ${tight} ｜ Shakeout: ${shake}`;
+            stepsEl.appendChild(info);
+        }
+        stepBox('Breakout', !!s.breakout);
+    }
+
+    // 阈值参数渲染
+    if (thresholdsEl) {
+        thresholdsEl.innerHTML = '';
+        const th = cheat.thresholds || {};
+        function box(label, value) {
+            const d = document.createElement('div');
+            d.style.background = '#f8f9fa';
+            d.style.border = '1px solid #eee';
+            d.style.borderRadius = '6px';
+            d.style.padding = '6px 8px';
+            d.textContent = `${label}: ${value}`;
+            thresholdsEl.appendChild(d);
+        }
+        if (th.depthPct) box('杯深范围', `${th.depthPct.min}%–${th.depthPct.max}%（过深>${th.depthPct.tooDeep}%）`);
+        if (th.durationWeeks) box('时长范围', `${th.durationWeeks.min}–${th.durationWeeks.max} 周`);
+        if (th.priorRunupPctMin != null) box('先前涨幅≥', `${th.priorRunupPctMin}%`);
+        if (th.ma200UpDaysMin != null) box('200MA上行≥', `${th.ma200UpDaysMin} 天`);
+        if (th.plateauWidthPct) box('平台宽度', `${th.plateauWidthPct.min}%–${th.plateauWidthPct.max}%`);
+        if (th.atrPctMax != null) box('ATR/Close ≤', `${(th.atrPctMax * 100).toFixed(1)}%`);
+        if (th.dryFactor != null) box('缩量阈值', `10日均量 < 50日均量 × ${th.dryFactor}`);
+        if (th.breakoutVolMult != null) box('突破量阈值', `≥ 10日均量 × ${th.breakoutVolMult}`);
+    }
+}
+}
+
 // 4. 接入现有 analyzeStock 流程
 window.analyzeStock = async function() {
     try {
@@ -915,6 +1335,9 @@ window.analyzeStock = async function() {
             renderCriteria(analysis.criteria || []);
             renderVcp(analysis.vcp);
             renderPivot(analysis.pivot);
+            renderCheat(analysis.cheat);
+            renderLowCheat(analysis.cheatLow);
+            renderPowerPlay(analysis.powerPlay);
         } catch (e) {
             console.warn('获取8条标准失败：', e);
             const list = document.getElementById('criteriaList');
@@ -923,6 +1346,9 @@ window.analyzeStock = async function() {
             }
             renderVcp(null);
             renderPivot(null);
+            renderCheat(null);
+            renderLowCheat(null);
+            renderPowerPlay(null);
         }
 
     } catch (error) {
