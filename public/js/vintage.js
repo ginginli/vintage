@@ -692,7 +692,9 @@ function renderLowCheat(cheat) {
             ['Low Cheat', cheat.buyPoints?.lowCheatPivot?.price?.toFixed ? cheat.buyPoints.lowCheatPivot.price.toFixed(2) : (cheat.buyPoints?.lowCheatPivot?.price ?? '-')],
             ['下三分之一阈值', cheat.cup?.lowerThird?.toFixed ? cheat.cup.lowerThird.toFixed(2) : (cheat.cup?.lowerThird ?? '-')]
         ]);
-        const widthPct = cheat.plateau?.widthPct; addCheck('平台宽度（5%–10%）', widthPct != null && widthPct >= 5 && widthPct <= 10, [[ '平台宽度(%)', widthPct != null ? widthPct.toFixed(2) + '%' : '-' ]]);
+        const widthPct = cheat.plateau?.widthPct; 
+        addCheck('平台宽度（5%–10%）', widthPct != null && widthPct >= 5 && widthPct <= 10, [[ '平台宽度(%)', widthPct != null ? widthPct.toFixed(2) + '%' : '-' ]]);
+    }dthPct >= 5 && widthPct <= 10, [[ '平台宽度(%)', widthPct != null ? widthPct.toFixed(2) + '%' : '-' ]]);
     }
 
     // 阶段
@@ -1189,7 +1191,6 @@ function renderCheat(cheat) {
         if (th.dryFactor != null) box('缩量阈值', `10日均量 < 50日均量 × ${th.dryFactor}`);
         if (th.breakoutVolMult != null) box('突破量阈值', `≥ 10日均量 × ${th.breakoutVolMult}`);
     }
-}
 // 3. StockController 类
 class StockController {
     constructor() {
