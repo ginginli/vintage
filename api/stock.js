@@ -14,10 +14,22 @@ export default async function handler(req, res) {
         const apiBaseUrl = process.env.ALPHA_VANTAGE_BASE_URL || 'https://www.alphavantage.co/query';
         const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
         
+        // 检查API密钥是否存在
+        if (!apiKey) {
+            console.error('Missing ALPHA_VANTAGE_API_KEY environment variable');
+            return res.status(500).json({ 
+                success: false,
+                error: '服务器配置错误：缺少API密钥。请联系管理员配置ALPHA_VANTAGE_API_KEY环境变量。'
+            });
+        }
+        
         const url = `${apiBaseUrl}?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=full&apikey=${apiKey}`;
         
+        console.log(`Fetching data for symbol: ${symbol}`);
         const response = await fetch(url);
         const data = await response.json();
+
+        console.log('API Response keys:', Object.keys(data));
 
         if (data['Error Message']) {
             throw new Error('无效的股票代码或API错误');
@@ -29,6 +41,7 @@ export default async function handler(req, res) {
 
         const timeSeriesData = data['Time Series (Daily)'];
         if (!timeSeriesData) {
+            console.error('No time series data found. Response:', JSON.stringify(data, null, 2));
             throw new Error('未获取到股票数据');
         }
 
