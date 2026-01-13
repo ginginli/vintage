@@ -1190,6 +1190,8 @@ function renderCheat(cheat) {
         if (th.dryFactor != null) box('缩量阈值', `10日均量 < 50日均量 × ${th.dryFactor}`);
         if (th.breakoutVolMult != null) box('突破量阈值', `≥ 10日均量 × ${th.breakoutVolMult}`);
     }
+}
+
 // 3. StockController 类
 class StockController {
     constructor() {
