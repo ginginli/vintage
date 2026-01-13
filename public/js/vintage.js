@@ -1190,46 +1190,6 @@ function renderCheat(cheat) {
         if (th.breakoutVolMult != null) box('突破量阈值', `≥ 10日均量 × ${th.breakoutVolMult}`);
     }
 }
-}
-
-// 4. 接入现有 analyzeStock 流程
-window.analyzeStock = async function() {
-    try {
-        const input = document.getElementById('stockCode');
-        const symbol = input.value.trim().toUpperCase();
-        if (!symbol) return;
-
-        document.getElementById('errorMessage').style.display = 'none';
-        document.getElementById('loading').style.display = 'block';
-
-        const api = new StockAPI();
-        const stockData = await api.fetchStockData(symbol);
-        const chartManager = new ChartManager();
-        chartManager.fullData = stockData;
-        chartManager.changePeriod(parseInt(document.getElementById('periodSelector').value, 10));
-
-        const analyzer = new StockAnalyzer();
-        const result = analyzer.analyze(stockData);
-        setTextareaContent('ma20Analysis', result.ma20Analysis);
-        setTextareaContent('volumePriceAnalysis', result.volumePriceAnalysis);
-        setTextareaContent('marketCharacter', result.marketCharacter);
-        setTextareaContent('operationAdvice', result.operationAdvice);
-
-        // 获取并渲染 8 条标准
-        try {
-            const criteria = await fetchCriteria(symbol);
-            renderCriteria(criteria);
-        } catch (e) {
-            console.warn('获取8条标准失败：', e);
-        }
-    } catch (error) {
-        const errEl = document.getElementById('errorMessage');
-        errEl.textContent = error.message || '发生未知错误';
-        errEl.style.display = 'block';
-    } finally {
-        document.getElementById('loading').style.display = 'none';
-    }
-}
 // 3. StockController 类
 class StockController {
     constructor() {
