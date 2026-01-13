@@ -694,7 +694,6 @@ function renderLowCheat(cheat) {
         ]);
         const widthPct = cheat.plateau?.widthPct; 
         addCheck('平台宽度（5%–10%）', widthPct != null && widthPct >= 5 && widthPct <= 10, [[ '平台宽度(%)', widthPct != null ? widthPct.toFixed(2) + '%' : '-' ]]);
-    }dthPct >= 5 && widthPct <= 10, [[ '平台宽度(%)', widthPct != null ? widthPct.toFixed(2) + '%' : '-' ]]);
     }
 
     // 阶段
