@@ -1,37 +1,5 @@
 {
-    "version": 2,
-    "builds": [
-        { "src": "api/**/*.js", "use": "@vercel/node" },
-        { "src": "public/**", "use": "@vercel/static" }
-    ],
-    "routes": [
-        {
-            "src": "/api/test",
-            "methods": ["GET"],
-            "dest": "api/test.js"
-        },
-        {
-            "src": "/api/stock",
-            "methods": ["GET"],
-            "dest": "api/stock.js"
-        },
-        {
-            "src": "/api/analysis",
-            "methods": ["GET", "POST"],
-            "dest": "api/analysis.js"
-        },
-        {
-            "src": "/api/health",
-            "methods": ["GET"],
-            "dest": "api/health.js"
-        },
-        {
-            "src": "/",
-            "dest": "public/index.html"
-        },
-        {
-            "src": "/(.+)",
-            "dest": "public/$1"
-        }
+    "rewrites": [
+        { "source": "/api/(.*)", "destination": "/api/$1" }
     ]
 }
