@@ -23,7 +23,7 @@ export default async function handler(req, res) {
             });
         }
         
-        const url = `${apiBaseUrl}?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=full&apikey=${apiKey}`;
+        const url = `${apiBaseUrl}?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=compact&apikey=${apiKey}`;
         
         console.log(`Fetching data for symbol: ${symbol}`);
         const response = await fetch(url);
