@@ -1,5 +1,9 @@
+import fetch from 'node-fetch';
+
 export default async function handler(req, res) {
     try {
+        const { symbol = 'AAPL', raw } = req.query;
+        
         // 检查环境变量
         const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
         const apiBaseUrl = process.env.ALPHA_VANTAGE_BASE_URL || 'https://www.alphavantage.co/query';
@@ -7,6 +11,25 @@ export default async function handler(req, res) {
         const hasApiKey = !!apiKey;
         const apiKeyLength = apiKey ? apiKey.length : 0;
         const apiKeyPreview = apiKey ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` : 'N/A';
+        
+        // 如果请求原始数据
+        if (raw === 'true' && hasApiKey) {
+            const url = `${apiBaseUrl}?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=compact&apikey=${apiKey}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            return res.json({
+                success: true,
+                symbol,
+                responseKeys: Object.keys(data),
+                hasMetaData: !!data['Meta Data'],
+                hasTimeSeries: !!data['Time Series (Daily)'],
+                metaData: data['Meta Data'],
+                firstDateSample: data['Time Series (Daily)'] ? Object.keys(data['Time Series (Daily)'])[0] : null,
+                sampleData: data['Time Series (Daily)'] ? data['Time Series (Daily)'][Object.keys(data['Time Series (Daily)'])[0]] : null,
+                rawResponse: data
+            });
+        }
         
         // 测试API调用
         let apiTestResult = 'Not tested';
@@ -44,7 +67,8 @@ export default async function handler(req, res) {
                 result: apiTestResult,
                 responseKeys: apiResponse ? Object.keys(apiResponse) : []
             },
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            tip: 'Add ?raw=true&symbol=AAPL to see raw API response'
         });
         
     } catch (error) {
