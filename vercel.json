@@ -6,6 +6,11 @@
     ],
     "routes": [
         {
+            "src": "/api/test",
+            "methods": ["GET"],
+            "dest": "api/test.js"
+        },
+        {
             "src": "/api/stock",
             "methods": ["GET"],
             "dest": "api/stock.js"
